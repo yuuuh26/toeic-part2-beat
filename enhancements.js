@@ -420,18 +420,17 @@ function enabledVoiceCountries() {
 
 function randomEnabledVoiceCountry() {
   const enabled = enabledVoiceCountries();
-  const alternatives = enabled.length > 1 && currentListeningLocale
-    ? enabled.filter((locale) => normalizedVoiceLang(locale) !== normalizedVoiceLang(currentListeningLocale))
-    : enabled;
-  return alternatives[Math.floor(Math.random() * alternatives.length)] || enabled[0] || "en-US";
+  return enabled[Math.floor(Math.random() * enabled.length)] || enabled[0] || "en-US";
 }
 
 function bestVoiceForLocale(locale) {
   const pool = voicePool.length ? voicePool : refreshVoicePool();
-  if (!pool.length) return null;
   const normalizedTarget = normalizedVoiceLang(locale);
-  const regional = pool.filter((voice) => normalizedVoiceLang(voice.lang) === normalizedTarget);
-  const candidates = regional.length ? regional : pool;
+  const preferred = pool.filter((voice) => normalizedVoiceLang(voice.lang) === normalizedTarget);
+  const allRegional = (window.speechSynthesis?.getVoices?.() || [])
+    .filter((voice) => normalizedVoiceLang(voice.lang) === normalizedTarget);
+  const candidates = preferred.length ? preferred : allRegional;
+  if (!candidates.length) return null;
   const fresh = candidates.filter((voice) => `${voice.name}|${voice.lang}` !== lastVoiceKey);
   const options = fresh.length ? fresh : candidates;
   const voice = options[Math.floor(Math.random() * options.length)] || candidates[0] || null;
