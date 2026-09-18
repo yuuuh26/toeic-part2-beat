@@ -68,7 +68,18 @@
           <span class="sound-waves"><i></i><i></i><i></i><i></i></span>
           <small>TAP TO REPLAY</small>
         </button>
-        <div id="listening-voice-badge" class="voice-origin-badge voice-origin-badge--listening" aria-live="polite">🎙️ 音声地域を確認中...</div>
+        <div class="question-voice-tools">
+          <div id="listening-voice-badge" class="voice-origin-badge voice-origin-badge--listening" aria-live="polite">🎙️ 音声地域を確認中...</div>
+          <label class="question-voice-selector">
+            <span>VOICE</span>
+            <select id="question-voice-country" aria-label="この問題の話者の国">
+              <option value="en-US">🇺🇸 アメリカ</option>
+              <option value="en-GB">🇬🇧 イギリス</option>
+              <option value="en-AU">🇦🇺 オーストラリア</option>
+              <option value="en-CA">🇨🇦 カナダ</option>
+            </select>
+          </label>
+        </div>
       </div>
       <div class="answer-zone">
         <button id="uncertain-button" class="uncertain-button" aria-pressed="false"><strong>?</strong><span>自信なし</span></button>
@@ -145,7 +156,7 @@
         <div class="setting-info url-info"><span><strong>App URL</strong><small id="app-url">https://yuuuh26.github.io/toeic-part2-beat/</small></span><button data-copy="app">コピー</button></div>
         <div class="setting-info url-info"><span><strong>Repository</strong><small id="repo-url">https://github.com/yuuuh26/toeic-part2-beat</small></span><button data-copy="repo">コピー</button></div>
       </div>
-      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.7.0</span><small>150 original questions · Local-first PWA</small><p>Made by YUU</p></div>
+      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.8.0</span><small>150 original questions · Local-first PWA</small><p>Made by YUU</p></div>
     </section>
   </main>
 
