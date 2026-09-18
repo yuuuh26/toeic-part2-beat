@@ -121,6 +121,7 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
 
 .review-head { display: flex; justify-content: space-between; align-items: center; margin: 6px 2px 14px; }
 .wrong-mark { color: var(--danger); font-size: 25px; font-weight: 1000; font-style: italic; letter-spacing: .06em; text-shadow: 0 0 16px rgba(255,62,104,.5); }
+.wrong-mark.uncertain-review { color: var(--gold); text-shadow: 0 0 16px rgba(255,225,77,.5); }
 .review-head > strong { color: var(--muted); }
 .review-card, .explanation-card { padding: 17px; border: 1px solid var(--line); border-radius: 18px; background: rgba(18,14,42,.82); }
 .review-line { display: grid; grid-template-columns: 42px 1fr; gap: 12px; align-items: start; }
