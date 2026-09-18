@@ -1,7 +1,7 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 
 const APP = Object.freeze({
-  version: "1.6.0",
+  version: "1.6.1",
   dailyGoal: 10,
   streakMinimum: 5,
   appUrl: "https://yuuuh26.github.io/toeic-part2-beat/",
@@ -385,7 +385,11 @@ async function submitAnswer(choice) {
 
   if (correct) {
     const specialCombo = GAME_CONFIG.milestoneCombos.includes(listeningCombo);
-    celebrate(specialCombo ? (listeningCombo === 5 ? "🔥 FEVER 🔥" : `${listeningCombo} COMBO!!`) : "CORRECT!", `+${xpEvent.amount} XP`, specialCombo);
+    celebrate(
+      specialCombo ? (listeningCombo === 5 ? "🔥 FEVER 🔥" : `${listeningCombo} COMBO!!`) : "CORRECT!",
+      uncertain ? `+${xpEvent.amount} XP · CHECK` : `+${xpEvent.amount} XP`,
+      specialCombo
+    );
     let delay = GAME_CONFIG.autoNextMs;
     if (dailyClear) {
       delay = 2100;
@@ -395,7 +399,11 @@ async function submitAnswer(choice) {
       delay = Math.max(delay, dailyClear ? 3200 : 2200);
       setTimeout(() => celebrate("LEVEL UP!", `LV.${xpEvent.before || levelInfo(state.totalXp - xpEvent.amount).level} → LV.${levelInfo().level}`, true), dailyClear ? 1900 : 850);
     }
-    setTimeout(nextQuestion, delay);
+    if (uncertain) {
+      setTimeout(showReview, Math.min(delay, 760));
+    } else {
+      setTimeout(nextQuestion, delay);
+    }
   } else {
     missEffect();
     setTimeout(showReview, 460);
@@ -404,6 +412,10 @@ async function submitAnswer(choice) {
 
 function showReview() {
   showView("review");
+  const reviewMark = $(".wrong-mark");
+  const correctButUncertain = currentAnswer === currentQuestion.correctChoice && uncertain;
+  reviewMark.textContent = correctButUncertain ? "CHECK" : "MISS";
+  reviewMark.classList.toggle("uncertain-review", correctButUncertain);
   $("#review-id").textContent = currentQuestion.id;
   $("#review-question-en").textContent = currentQuestion.questionText;
   $("#review-question-ja").textContent = currentQuestion.questionJa;
