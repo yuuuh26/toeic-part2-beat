@@ -70,7 +70,7 @@ assert.doesNotMatch(html, /id="listening-status"/);
 assert.doesNotMatch(html, /class="choice-text"/);
 assert.match(read("styles.css"), /grid-template-columns: 1fr; gap: 10px/);
 
-assert.match(enhancements, /APP_VERSION = "1\.4\.0"/);
+assert.match(enhancements, /APP_VERSION = "1\.5\.0"/);
 assert.match(enhancements, /window\.speechSynthesis\.cancel|synthesis\.cancel/);
 assert.match(enhancements, /#back-button/);
 assert.match(enhancements, /visibilitychange/);
@@ -89,7 +89,7 @@ assert.match(enhancements, /selectHighQualityVoice/);
 assert.match(enhancements, /BGM_TRACKS/);
 assert.match(enhancements, /EXTRA_QUESTIONS/);
 
-assert.match(serviceWorker, /toeic-part2-beat-v1\.4\.0/);
+assert.match(serviceWorker, /toeic-part2-beat-v1\.5\.0/);
 assert.match(serviceWorker, /enhancements\.js/);
 assert.match(serviceWorker, /questions-extra-5\.js/);
 assert.match(serviceWorker, /bgm-tracks\.js/);
