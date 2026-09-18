@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { QUESTIONS } from "../questions.js";
 import { EXTRA_QUESTIONS } from "../questions-extra.js";
+import { BGM_TRACKS } from "../bgm-tracks.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -27,10 +28,20 @@ for (const question of allQuestions) {
   for (const choice of question.choices) assert.ok(choice.text && choice.ja);
 }
 
+assert.equal(BGM_TRACKS.length, 4);
+assert.deepEqual(BGM_TRACKS.map((track) => track.id), [
+  "after-hours-velocity", "ready-set-goal", "step-into-focus", "victory-loop"
+]);
+for (const track of BGM_TRACKS) {
+  assert.ok(track.title);
+  assert.match(track.src, /^data:audio\/ogg;base64,/);
+}
+
 const requiredFiles = [
   "index.html", "styles.css", "app.js", "enhancements.js", "questions.js", "questions-extra.js",
   "questions-extra-1.js", "questions-extra-2.js", "questions-extra-3.js", "questions-extra-4.js", "questions-extra-5.js",
-  "bgm-after-hours.js", "bgm-small-1.js", "bgm-small-2.js", "manifest.webmanifest", "sw.js",
+  "bgm-tracks.js", "bgm-track-after-hours.js", "bgm-track-ready-set-goal.js",
+  "bgm-track-step-into-focus.js", "bgm-track-victory-loop.js", "manifest.webmanifest", "sw.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/icon-maskable-512.png"
 ];
 requiredFiles.forEach((file) => assert.ok(exists(file), `${file} must exist`));
@@ -44,7 +55,6 @@ assert.match(html, /noindex,nofollow/);
 assert.match(html, /id="uncertain-button"/);
 assert.match(html, /id="speaking-view"/);
 assert.match(html, /src="\.\/enhancements\.js"/);
-assert.match(html, /v1\.3\.0/);
 assert.match(html, /150 original questions/);
 assert.match(html, /Made by YUU/);
 assert.match(app, /interimResults = true/);
@@ -58,21 +68,25 @@ assert.doesNotMatch(html, /id="listening-status"/);
 assert.doesNotMatch(html, /class="choice-text"/);
 assert.match(read("styles.css"), /grid-template-columns: 1fr; gap: 10px/);
 
+assert.match(enhancements, /APP_VERSION = "1\.4\.0"/);
 assert.match(enhancements, /window\.speechSynthesis\.cancel|synthesis\.cancel/);
 assert.match(enhancements, /#back-button/);
 assert.match(enhancements, /visibilitychange/);
 assert.match(enhancements, /readingBgmPercent: 100/);
 assert.match(enhancements, /bgmVolume: 34/);
-assert.match(enhancements, /setting-reading-bgm/);
+assert.match(enhancements, /bgmTrackId/);
+assert.match(enhancements, /setting-bgm-track/);
+assert.match(enhancements, /preview-bgm/);
+assert.match(enhancements, /pointerdown/);
 assert.match(enhancements, /selectHighQualityVoice/);
-assert.match(enhancements, /VOICE_HINTS/);
+assert.match(enhancements, /BGM_TRACKS/);
 assert.match(enhancements, /EXTRA_QUESTIONS/);
-assert.match(enhancements, /AFTER_HOURS_VELOCITY_BGM/);
 
-assert.match(serviceWorker, /toeic-part2-beat-v1\.3\.0/);
+assert.match(serviceWorker, /toeic-part2-beat-v1\.4\.0/);
 assert.match(serviceWorker, /enhancements\.js/);
 assert.match(serviceWorker, /questions-extra-5\.js/);
-assert.match(serviceWorker, /bgm-after-hours\.js/);
+assert.match(serviceWorker, /bgm-tracks\.js/);
+assert.match(serviceWorker, /bgm-track-victory-loop\.js/);
 assert.equal(manifest.id, "/toeic-part2-beat/");
 assert.equal(manifest.display, "standalone");
 assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512" && icon.purpose === "maskable"));
@@ -80,4 +94,4 @@ assert.ok(manifest.icons.some((icon) => icon.sizes === "512x512" && icon.purpose
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
 assert.equal(ids.length, new Set(ids).size, "HTML ids must be unique");
 
-console.log("Static checks passed: 150 questions, voice variation, narration guards, BGM controls, PWA assets, storage, speaking, and unique DOM ids.");
+console.log("Static checks passed: 150 questions, four selectable BGM tracks, gesture-safe playback, voice variation, narration guards, PWA assets, storage, speaking, and unique DOM ids.");
