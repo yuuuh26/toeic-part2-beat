@@ -631,9 +631,12 @@ async function startSpeakingRecognition() {
   shouldScoreSpeech = true;
   recognition = new Recognition();
   recognition.lang = SPEAKING_CONFIG.language;
-  recognition.continuous = true;
+  // Part 2 Speaking is a single short response. Keeping recognition continuous
+  // can cause Android Chrome to emit overlapping final segments repeatedly.
+  // Match english-speaking-beat: one utterance, latest recognition result only.
+  recognition.continuous = false;
   recognition.interimResults = true;
-  recognition.maxAlternatives = 1;
+  recognition.maxAlternatives = 5;
   recognition.onstart = () => {
     recognitionActive = true;
     $("#speech-stage").className = "speech-stage listening";
@@ -654,24 +657,20 @@ async function startSpeakingRecognition() {
 }
 
 function handleSpeechResult(event) {
-  let interim = "";
-  for (let index = event.resultIndex; index < event.results.length; index += 1) {
-    const result = event.results[index];
-    const transcript = result[0]?.transcript?.trim() || "";
-    if (!transcript) continue;
-    if (result.isFinal) {
-      const key = normalizeSpeech(transcript);
-      if (key && !speechFinalKeys.has(key)) {
-        speechFinalKeys.add(key);
-        speechFinalSegments.push(transcript);
-      }
-    } else {
-      interim += `${transcript} `;
-    }
+  const result = event.results[event.results.length - 1];
+  const transcript = result?.[0]?.transcript?.trim() || "";
+  if (!transcript) return;
+
+  // Do not append successive browser hypotheses. Replace the live transcript
+  // with the latest hypothesis so repeated Web Speech results never multiply.
+  if (result.isFinal) {
+    speechFinalSegments = [transcript];
+    speechFinalKeys = new Set([normalizeSpeech(transcript)].filter(Boolean));
+    speechInterim = "";
+  } else {
+    speechInterim = transcript;
   }
-  speechInterim = interim.trim();
-  const display = [...speechFinalSegments, speechInterim].filter(Boolean).join(" ");
-  $("#speech-transcript").textContent = display || "聞き取り中...";
+  $("#speech-transcript").textContent = transcript || "聞き取り中...";
 }
 
 function stopRecognition(score = true) {
