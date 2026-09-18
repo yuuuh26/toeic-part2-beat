@@ -1,7 +1,7 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 
 const APP = Object.freeze({
-  version: "1.0.0",
+  version: "1.1.0",
   dailyGoal: 10,
   streakMinimum: 5,
   appUrl: "https://yuuuh26.github.io/toeic-part2-beat/",
@@ -293,9 +293,20 @@ function nextQuestion() {
   updateComboHud();
   $("#uncertain-button").classList.remove("active");
   $("#uncertain-button").setAttribute("aria-pressed", "false");
-  $$(".choice-button").forEach((button) => { button.disabled = false; button.classList.remove("correct", "wrong"); });
+  currentQuestion.choices.forEach((choice) => {
+    const button = $(`.choice-button[data-choice="${choice.key}"]`);
+    if (!button) return;
+    button.disabled = false;
+    button.classList.remove("correct", "wrong");
+    button.innerHTML = `<span class="choice-letter">${choice.key}</span><span class="choice-text">${escapeHtml(choice.text)}</span>`;
+    button.setAttribute("aria-label", `${choice.key}. ${choice.text}`);
+  });
   $("#listening-status").textContent = "LISTENING...";
-  setTimeout(() => speakText(currentQuestion.questionText, { onEnd: () => { if (!answerLocked) $("#listening-status").textContent = "CHOOSE A / B / C"; } }), 180);
+  const listeningText = [
+    currentQuestion.questionText,
+    ...currentQuestion.choices.map((choice) => `${choice.key}. ${choice.text}`)
+  ].join(" ");
+  setTimeout(() => speakText(listeningText, { onEnd: () => { if (!answerLocked) $("#listening-status").textContent = "CHOOSE A / B / C"; } }), 180);
 }
 
 function updateComboHud() {
