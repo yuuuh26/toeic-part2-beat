@@ -46,7 +46,7 @@
       </div>
 
       <nav class="main-menu" aria-label="ゲームメニュー">
-        <button class="menu-button primary" data-action="quick"><span class="menu-icon">▶</span><span><strong>QUICK PLAY</strong><small>テンポよく通常学習</small></span></button>
+        <button class="menu-button primary" data-action="quick"><span class="menu-icon">▶</span><span><strong>QUICK PLAY</strong><small id="quick-play-caption">7問で終了</small></span></button>
         <button class="menu-button magenta" data-action="weak"><span class="menu-icon">⚡</span><span><strong>WEAK POINT</strong><small>苦手を集中攻略</small></span><b id="weak-badge" class="badge">0</b></button>
         <button class="menu-button cyan" data-action="speaking"><span class="menu-icon">◉</span><span><strong>SPEAKING</strong><small>正答フレーズを発話</small></span></button>
         <button class="menu-button violet" data-action="weak-speaking"><span class="menu-icon">◆</span><span><strong>WEAK SPEAKING</strong><small>間違えた問題文＋選択肢を重点練習</small></span></button>
@@ -138,11 +138,14 @@
         <label><span><strong>振動</strong><small>対応端末のみ</small></span><input id="setting-vibration" type="checkbox" checked></label>
         <label class="select-row"><span><strong>問題音声速度</strong></span><select id="setting-rate"><option value="0.85">0.85×</option><option value="0.95">0.95×</option><option value="1" selected>1.0×</option><option value="1.1">1.1×</option></select></label>
         <label class="select-row"><span><strong>エフェクト強度</strong><small>初期値はMAX</small></span><select id="setting-effects"><option value="max">MAX</option><option value="normal">NORMAL</option><option value="reduced">REDUCED</option></select></label>
+        <label class="select-row"><span><strong>QUICK終了条件</strong><small>問題数または時間で終了</small></span><select id="setting-quick-end-mode"><option value="questions">問題数</option><option value="time">時間</option></select></label>
+        <label class="quick-limit-row"><span><strong>QUICK問題数</strong><small>初期値 7問</small></span><span class="quick-number-control"><input id="setting-quick-questions" type="number" min="1" max="100" step="1" inputmode="numeric"><b>問</b></span></label>
+        <label class="quick-limit-row"><span><strong>QUICK時間</strong><small>初期値 1分45秒</small></span><span class="quick-time-control"><input id="setting-quick-minutes" type="number" min="0" max="30" step="1" inputmode="numeric"><b>分</b><input id="setting-quick-seconds" type="number" min="0" max="59" step="5" inputmode="numeric"><b>秒</b></span></label>
         <div class="setting-info"><span><strong>永続ストレージ</strong><small id="persistence-status">確認中...</small></span><button id="request-persistence">申請</button></div>
         <div class="setting-info url-info"><span><strong>App URL</strong><small id="app-url">https://yuuuh26.github.io/toeic-part2-beat/</small></span><button data-copy="app">コピー</button></div>
         <div class="setting-info url-info"><span><strong>Repository</strong><small id="repo-url">https://github.com/yuuuh26/toeic-part2-beat</small></span><button data-copy="repo">コピー</button></div>
       </div>
-      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.6.1</span><small>150 original questions · Local-first PWA</small><p>Made by YUU</p></div>
+      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.7.0</span><small>150 original questions · Local-first PWA</small><p>Made by YUU</p></div>
     </section>
   </main>
 
