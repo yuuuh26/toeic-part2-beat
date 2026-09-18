@@ -2,7 +2,7 @@ import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 import { EXTRA_QUESTIONS } from "./questions-extra.js";
 import { BGM_TRACKS } from "./bgm-tracks.js";
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const STORAGE_KEY = "toeic-part2-beat-enhancements-v3";
 const LEGACY_STORAGE_KEYS = ["toeic-part2-beat-enhancements-v2", "toeic-part2-beat-enhancements-v1"];
 const AUDIO_DB_NAME = "toeic-part2-beat-full-bgm";
@@ -45,6 +45,8 @@ document.body.appendChild(bgm);
 
 let readingActive = false;
 let voicePool = [];
+let lastVoiceKey = "";
+let lastVoiceLang = "";
 let bgmUnlocked = false;
 let previewingBgm = false;
 let bgmSessionActive = false;
@@ -335,13 +337,20 @@ function voiceQualityScore(voice) {
 function refreshVoicePool() {
   if (!("speechSynthesis" in window)) return [];
   const voices = window.speechSynthesis.getVoices().filter((voice) => /^en/i.test(voice.lang || ""));
-  voicePool = voices
+  const ranked = voices
     .map((voice) => ({ voice, score: voiceQualityScore(voice) }))
     .filter(({ score }) => score >= 20)
     .sort((left, right) => right.score - left.score)
     .map(({ voice }) => voice)
-    .filter((voice, index, list) => list.findIndex((candidate) => candidate.name === voice.name && candidate.lang === voice.lang) === index)
-    .slice(0, 8);
+    .filter((voice, index, list) => list.findIndex((candidate) => candidate.name === voice.name && candidate.lang === voice.lang) === index);
+
+  const preferredLocales = ["en-US", "en-GB", "en-AU", "en-CA", "en-IE", "en-NZ", "en-IN", "en-ZA"];
+  const regionalBest = preferredLocales
+    .map((locale) => ranked.find((voice) => String(voice.lang || "").toLowerCase() === locale.toLowerCase()))
+    .filter(Boolean);
+  const selectedKeys = new Set(regionalBest.map((voice) => `${voice.name}|${voice.lang}`));
+  const remaining = ranked.filter((voice) => !selectedKeys.has(`${voice.name}|${voice.lang}`));
+  voicePool = [...regionalBest, ...remaining].slice(0, 12);
   updateVoiceAvailabilityText();
   return voicePool;
 }
@@ -355,13 +364,65 @@ function stableHash(text) {
   return hash >>> 0;
 }
 
-function selectHighQualityVoice(text) {
+const VOICE_REGION_META = Object.freeze({
+  "en-us": { flag: "🇺🇸", country: "アメリカ" },
+  "en-gb": { flag: "🇬🇧", country: "イギリス" },
+  "en-au": { flag: "🇦🇺", country: "オーストラリア" },
+  "en-ca": { flag: "🇨🇦", country: "カナダ" },
+  "en-ie": { flag: "🇮🇪", country: "アイルランド" },
+  "en-nz": { flag: "🇳🇿", country: "ニュージーランド" },
+  "en-in": { flag: "🇮🇳", country: "インド" },
+  "en-za": { flag: "🇿🇦", country: "南アフリカ" }
+});
+
+function normalizedVoiceLang(lang = "") {
+  return String(lang || "").replace("_", "-").toLowerCase();
+}
+
+function voiceRegionMeta(lang = "") {
+  const normalized = normalizedVoiceLang(lang);
+  return {
+    ...(VOICE_REGION_META[normalized] || { flag: "🌐", country: "英語" }),
+    locale: lang || "en"
+  };
+}
+
+function updateVoiceBadges(voice, fallbackLang = "") {
+  const lang = voice?.lang || fallbackLang || "en";
+  const meta = voiceRegionMeta(lang);
+  const text = `${meta.flag} ${meta.country} · ${meta.locale}`;
+  ["#listening-voice-badge", "#speaking-voice-badge"].forEach((selector) => {
+    const badge = document.querySelector(selector);
+    if (!badge) return;
+    badge.textContent = text;
+    if (voice?.name) badge.title = voice.name;
+  });
+}
+
+function selectHighQualityVoice() {
   const pool = voicePool.length ? voicePool : refreshVoicePool();
   if (!pool.length) return null;
-  const hint = voiceHintByListeningText.get(text);
-  const regional = hint ? pool.filter((voice) => `${voice.lang || ""}`.toLowerCase() === hint.toLowerCase()) : [];
-  const candidates = regional.length ? regional : pool;
-  return candidates[stableHash(text) % candidates.length] || pool[0];
+
+  const groups = new Map();
+  pool.forEach((voice) => {
+    const lang = normalizedVoiceLang(voice.lang);
+    if (!groups.has(lang)) groups.set(lang, []);
+    groups.get(lang).push(voice);
+  });
+
+  const languages = [...groups.keys()];
+  const languageChoices = languages.length > 1 && lastVoiceLang
+    ? languages.filter((lang) => lang !== lastVoiceLang)
+    : languages;
+  const chosenLang = languageChoices[Math.floor(Math.random() * languageChoices.length)] || languages[0];
+  const regionalVoices = groups.get(chosenLang) || pool;
+  const freshVoices = regionalVoices.filter((voice) => `${voice.name}|${voice.lang}` !== lastVoiceKey);
+  const candidates = freshVoices.length ? freshVoices : regionalVoices;
+  const voice = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+
+  lastVoiceKey = `${voice.name}|${voice.lang}`;
+  lastVoiceLang = normalizedVoiceLang(voice.lang);
+  return voice;
 }
 
 function installSpeechEnhancements() {
@@ -373,13 +434,14 @@ function installSpeechEnhancements() {
   try {
     synthesis.speak = (utterance) => {
       if (enhancementSettings.voiceMode === "rotate" && utterance?.text) {
-        const selectedVoice = selectHighQualityVoice(utterance.text);
+        const selectedVoice = selectHighQualityVoice();
         if (selectedVoice) {
           utterance.voice = selectedVoice;
           utterance.lang = selectedVoice.lang || utterance.lang;
         }
       }
 
+      updateVoiceBadges(utterance.voice, utterance.lang);
       setReadingActive(true);
       const previousEnd = utterance.onend;
       const previousError = utterance.onerror;
@@ -436,7 +498,7 @@ function injectSettings() {
     <div class="setting-info"><span><strong>全尺BGM</strong><small id="full-bgm-status">確認中...</small></span><button id="register-full-bgm" class="bgm-import-button" type="button">元MP3を登録</button><input id="full-bgm-files" type="file" accept="audio/*,.mp3,.ogg,.m4a" multiple hidden></div>
     <label><span><strong>BGM音量</strong><small><b id="bgm-volume-value" class="enhancement-value"></b></small></span><input id="setting-bgm-volume" class="enhancement-range" type="range" min="0" max="100" step="1"></label>
     <label><span><strong>問題読み上げ中のBGM</strong><small>通常音量に対する割合 · 初期値100%</small></span><span><b id="reading-bgm-value" class="enhancement-value"></b><input id="setting-reading-bgm" class="enhancement-range" type="range" min="0" max="100" step="10"></span></label>
-    <label class="select-row"><span><strong>問題音声の声</strong><small id="voice-availability">高品質音声を確認中...</small></span><select id="setting-voice-mode"><option value="rotate">高品質音声を自動切替</option><option value="fixed">現在の音声に固定</option></select></label>
+    <label class="select-row"><span><strong>問題音声の声</strong><small id="voice-availability">高品質音声を確認中...</small></span><select id="setting-voice-mode"><option value="rotate">高品質音声をランダム切替</option><option value="fixed">現在の音声に固定</option></select></label>
   `;
   while (wrapper.firstChild) fragment.appendChild(wrapper.firstChild);
   list.prepend(fragment);
@@ -523,7 +585,13 @@ function syncSettingsUi() {
 
 function updateVoiceAvailabilityText() {
   const label = document.querySelector("#voice-availability");
-  if (label) label.textContent = voicePool.length ? `${voicePool.length}種類の英語音声を利用可能` : "端末標準の英語音声を使用";
+  if (!label) return;
+  if (!voicePool.length) {
+    label.textContent = "端末標準の英語音声を使用";
+    return;
+  }
+  const regions = new Set(voicePool.map((voice) => normalizedVoiceLang(voice.lang))).size;
+  label.textContent = `${voicePool.length}種類・${regions}地域の英語音声を利用可能`;
 }
 
 function updateAppMetadata() {
