@@ -1,7 +1,7 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 
 const APP = Object.freeze({
-  version: "1.6.1",
+  version: "1.7.0",
   dailyGoal: 10,
   streakMinimum: 5,
   appUrl: "https://yuuuh26.github.io/toeic-part2-beat/",
@@ -43,7 +43,7 @@ const defaultState = () => ({
   learningDates: [],
   daily: {},
   questions: {},
-  settings: { sound: true, vibration: true, rate: 1, effects: "max" },
+  settings: { sound: true, vibration: true, rate: 1, effects: "max", quickEndMode: "questions", quickQuestionLimit: 7, quickTimeSeconds: 105 },
   dailyBonusDates: []
 });
 
@@ -57,6 +57,16 @@ let questionQueue = [];
 let uncertain = false;
 let answerLocked = false;
 let listeningCombo = 0;
+let quickSession = {
+  active: false,
+  answered: 0,
+  startedAt: 0,
+  deadline: 0,
+  timer: 0,
+  pendingFinish: false,
+  reason: ""
+};
+let gameNavigationTimer = 0;
 let speakingCombo = 0;
 let speakingQueue = [];
 let currentSpeaking = null;
@@ -234,6 +244,12 @@ function renderHome() {
   $("#daily-fill").style.width = `${Math.min(100, daily.attempts / APP.dailyGoal * 100)}%`;
   $("#daily-caption").textContent = daily.attempts >= APP.dailyGoal ? "DAILY CLEAR!" : `あと${APP.dailyGoal - daily.attempts}問！`;
   $("#weak-badge").textContent = weak;
+  const quickCaption = $("#quick-play-caption");
+  if (quickCaption) {
+    quickCaption.textContent = state.settings.quickEndMode === "time"
+      ? `${formatDuration(quickTimeLimitSeconds())}で終了`
+      : `${quickQuestionLimit()}問で終了`;
+  }
   els.topStatus.textContent = `XP ${state.totalXp}`;
   document.body.classList.remove("fever");
 }
@@ -269,9 +285,110 @@ function getWeakQuestions(filter = "auto") {
   }).sort((a, b) => (state.questions[b.id]?.weakScore || 0) - (state.questions[a.id]?.weakScore || 0));
 }
 
+function quickQuestionLimit() {
+  return Math.max(1, Math.min(100, Number(state.settings.quickQuestionLimit) || 7));
+}
+
+function quickTimeLimitSeconds() {
+  return Math.max(30, Math.min(1800, Number(state.settings.quickTimeSeconds) || 105));
+}
+
+function formatDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.ceil(Number(totalSeconds) || 0));
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function clearQuickTimer() {
+  if (quickSession.timer) window.clearInterval(quickSession.timer);
+  quickSession.timer = 0;
+}
+
+function remainingQuickSeconds() {
+  if (!quickSession.active || state.settings.quickEndMode !== "time") return quickTimeLimitSeconds();
+  return Math.max(0, (quickSession.deadline - Date.now()) / 1000);
+}
+
+function quickSessionLimitReached() {
+  if (!quickSession.active || currentMode !== "quick") return false;
+  if (state.settings.quickEndMode === "time") return remainingQuickSeconds() <= 0;
+  return quickSession.answered >= quickQuestionLimit();
+}
+
+function updateQuickHud() {
+  if (currentMode !== "quick" || !quickSession.active) return;
+  const label = $("#mode-label");
+  if (!label) return;
+  if (state.settings.quickEndMode === "time") {
+    label.textContent = `QUICK · ${formatDuration(remainingQuickSeconds())}`;
+  } else {
+    const currentNumber = Math.min(quickQuestionLimit(), quickSession.answered + (answerLocked ? 0 : 1));
+    label.textContent = `QUICK · ${currentNumber}/${quickQuestionLimit()}`;
+  }
+}
+
+function tickQuickSession() {
+  if (!quickSession.active || currentMode !== "quick" || state.settings.quickEndMode !== "time") return;
+  updateQuickHud();
+  if (remainingQuickSeconds() > 0) return;
+  quickSession.pendingFinish = true;
+  quickSession.reason = "time";
+  if (currentView === "review" || answerLocked) {
+    const next = $("#next-question");
+    if (next) next.innerHTML = 'FINISH <span>›</span>';
+    return;
+  }
+  finishQuickSession("time");
+}
+
+function startQuickSession() {
+  clearQuickTimer();
+  quickSession.active = true;
+  quickSession.answered = 0;
+  quickSession.startedAt = Date.now();
+  quickSession.deadline = state.settings.quickEndMode === "time"
+    ? quickSession.startedAt + quickTimeLimitSeconds() * 1000
+    : 0;
+  quickSession.pendingFinish = false;
+  quickSession.reason = "";
+  if (state.settings.quickEndMode === "time") {
+    quickSession.timer = window.setInterval(tickQuickSession, 250);
+  }
+}
+
+function cancelQuickSession() {
+  clearQuickTimer();
+  quickSession.active = false;
+  quickSession.pendingFinish = false;
+  quickSession.reason = "";
+  if (gameNavigationTimer) window.clearTimeout(gameNavigationTimer);
+  gameNavigationTimer = 0;
+}
+
+function scheduleGameNavigation(callback, delay) {
+  if (gameNavigationTimer) window.clearTimeout(gameNavigationTimer);
+  gameNavigationTimer = window.setTimeout(() => {
+    gameNavigationTimer = 0;
+    callback();
+  }, delay);
+}
+
+function finishQuickSession(reason = "") {
+  if (!quickSession.active || currentMode !== "quick") return;
+  const answered = quickSession.answered;
+  const finalReason = reason || quickSession.reason || (state.settings.quickEndMode === "time" ? "time" : "questions");
+  cancelQuickSession();
+  answerLocked = true;
+  window.speechSynthesis?.cancel();
+  celebrate(finalReason === "time" ? "TIME UP!" : "QUICK CLEAR!", `${answered} Q`, true);
+  window.setTimeout(() => showView("home"), 1050);
+}
+
 function startGame(mode = "quick", filter = "auto") {
   currentMode = mode;
   listeningCombo = 0;
+  if (mode === "quick") startQuickSession();
+  else cancelQuickSession();
   questionQueue = mode === "quick" ? buildQuickQueue() : shuffled(getWeakQuestions(filter));
   if (!questionQueue.length) {
     showToast("該当する弱点問題はまだありません");
@@ -283,6 +400,10 @@ function startGame(mode = "quick", filter = "auto") {
 }
 
 function nextQuestion() {
+  if (currentMode === "quick" && quickSessionLimitReached()) {
+    finishQuickSession(quickSession.reason || (state.settings.quickEndMode === "time" ? "time" : "questions"));
+    return;
+  }
   if (!questionQueue.length) questionQueue = currentMode === "quick" ? buildQuickQueue() : shuffled(getWeakQuestions("auto"));
   if (!questionQueue.length) return showView("home");
   currentQuestion = questionQueue.shift();
@@ -292,6 +413,7 @@ function nextQuestion() {
   $("#question-number").textContent = currentQuestion.id.replace("Q0", "Q.").replace("Q", "Q.");
   $("#mode-label").textContent = currentMode === "quick" ? "QUICK PLAY" : "WEAK POINT";
   updateComboHud();
+  updateQuickHud();
   $("#uncertain-button").classList.remove("active");
   $("#uncertain-button").setAttribute("aria-pressed", "false");
   currentQuestion.choices.forEach((choice) => {
@@ -348,6 +470,13 @@ async function submitAnswer(choice) {
   if (uncertain) record.uncertainCount += 1;
   state.totalAttempts += 1;
   daily.attempts += 1;
+  if (currentMode === "quick" && quickSession.active) {
+    quickSession.answered += 1;
+    if (state.settings.quickEndMode === "questions" && quickSession.answered >= quickQuestionLimit()) {
+      quickSession.pendingFinish = true;
+      quickSession.reason = "questions";
+    }
+  }
   let xpEvent = { levelUp: false, amount: 0 };
 
   if (correct) {
@@ -378,6 +507,7 @@ async function submitAnswer(choice) {
   }
   await saveState();
   updateComboHud();
+  updateQuickHud();
 
   const selected = $(`.choice-button[data-choice="${choice}"]`);
   selected.classList.add(correct ? "correct" : "wrong");
@@ -400,13 +530,18 @@ async function submitAnswer(choice) {
       setTimeout(() => celebrate("LEVEL UP!", `LV.${xpEvent.before || levelInfo(state.totalXp - xpEvent.amount).level} → LV.${levelInfo().level}`, true), dailyClear ? 1900 : 850);
     }
     if (uncertain) {
-      setTimeout(showReview, Math.min(delay, 760));
+      scheduleGameNavigation(showReview, Math.min(delay, 760));
+    } else if (currentMode === "quick" && quickSessionLimitReached()) {
+      scheduleGameNavigation(
+        () => finishQuickSession(quickSession.reason || (state.settings.quickEndMode === "time" ? "time" : "questions")),
+        delay
+      );
     } else {
-      setTimeout(nextQuestion, delay);
+      scheduleGameNavigation(nextQuestion, delay);
     }
   } else {
     missEffect();
-    setTimeout(showReview, 460);
+    scheduleGameNavigation(showReview, 460);
   }
 }
 
@@ -416,6 +551,12 @@ function showReview() {
   const correctButUncertain = currentAnswer === currentQuestion.correctChoice && uncertain;
   reviewMark.textContent = correctButUncertain ? "CHECK" : "MISS";
   reviewMark.classList.toggle("uncertain-review", correctButUncertain);
+  const reviewNext = $("#next-question");
+  if (reviewNext) {
+    reviewNext.innerHTML = currentMode === "quick" && quickSessionLimitReached()
+      ? 'FINISH <span>›</span>'
+      : 'NEXT <span>›</span>';
+  }
   $("#review-id").textContent = currentQuestion.id;
   $("#review-question-en").textContent = currentQuestion.questionText;
   $("#review-question-ja").textContent = currentQuestion.questionJa;
@@ -466,6 +607,11 @@ function renderSettings() {
   $("#setting-vibration").checked = state.settings.vibration;
   $("#setting-rate").value = String(state.settings.rate);
   $("#setting-effects").value = state.settings.effects;
+  $("#setting-quick-end-mode").value = state.settings.quickEndMode || "questions";
+  $("#setting-quick-questions").value = String(quickQuestionLimit());
+  const totalQuickSeconds = quickTimeLimitSeconds();
+  $("#setting-quick-minutes").value = String(Math.floor(totalQuickSeconds / 60));
+  $("#setting-quick-seconds").value = String(totalQuickSeconds % 60);
   $("#app-url").textContent = APP.appUrl;
   $("#repo-url").textContent = APP.repoUrl;
   $("#version-label").textContent = `v${APP.version}`;
@@ -824,7 +970,10 @@ async function copyText(value) {
 }
 
 function bindEvents() {
-  els.back.addEventListener("click", () => showView("home"));
+  els.back.addEventListener("click", () => {
+    if (currentMode === "quick") cancelQuickSession();
+    showView("home");
+  });
   $$('[data-action]').forEach((button) => button.addEventListener("click", () => {
     const action = button.dataset.action;
     if (action === "quick") startGame("quick");
@@ -839,7 +988,14 @@ function bindEvents() {
   $$(".choice-button").forEach((button) => button.addEventListener("click", () => submitAnswer(button.dataset.choice)));
   $("#replay-question").addEventListener("click", playListeningQuestion);
   $("#review-question-audio").addEventListener("click", playListeningQuestion);
-  $("#next-question").addEventListener("click", () => { showView("game"); nextQuestion(); });
+  $("#next-question").addEventListener("click", () => {
+    if (currentMode === "quick" && quickSessionLimitReached()) {
+      finishQuickSession(quickSession.reason || (state.settings.quickEndMode === "time" ? "time" : "questions"));
+      return;
+    }
+    showView("game");
+    nextQuestion();
+  });
   $("#model-audio").addEventListener("click", () => currentSpeaking && speakText(currentSpeaking.text));
   $("#speech-start").addEventListener("click", startSpeakingRecognition);
   $("#speech-stop").addEventListener("click", () => stopRecognition(true));
@@ -849,6 +1005,26 @@ function bindEvents() {
   $("#setting-vibration").addEventListener("change", async (event) => { state.settings.vibration = event.target.checked; await saveState(); });
   $("#setting-rate").addEventListener("change", async (event) => { state.settings.rate = Number(event.target.value); await saveState(); });
   $("#setting-effects").addEventListener("change", async (event) => { state.settings.effects = event.target.value; await saveState(); });
+  $("#setting-quick-end-mode").addEventListener("change", async (event) => {
+    state.settings.quickEndMode = event.target.value === "time" ? "time" : "questions";
+    await saveState();
+    renderSettings();
+  });
+  $("#setting-quick-questions").addEventListener("change", async (event) => {
+    state.settings.quickQuestionLimit = Math.max(1, Math.min(100, Number(event.target.value) || 7));
+    event.target.value = String(state.settings.quickQuestionLimit);
+    await saveState();
+  });
+  const saveQuickTime = async () => {
+    const minutes = Math.max(0, Math.min(30, Number($("#setting-quick-minutes").value) || 0));
+    const seconds = Math.max(0, Math.min(59, Number($("#setting-quick-seconds").value) || 0));
+    state.settings.quickTimeSeconds = Math.max(30, Math.min(1800, minutes * 60 + seconds));
+    $("#setting-quick-minutes").value = String(Math.floor(state.settings.quickTimeSeconds / 60));
+    $("#setting-quick-seconds").value = String(state.settings.quickTimeSeconds % 60);
+    await saveState();
+  };
+  $("#setting-quick-minutes").addEventListener("change", saveQuickTime);
+  $("#setting-quick-seconds").addEventListener("change", saveQuickTime);
   $("#request-persistence").addEventListener("click", requestPersistence);
   $$('[data-copy]').forEach((button) => button.addEventListener("click", () => copyText(button.dataset.copy === "app" ? APP.appUrl : APP.repoUrl)));
   document.addEventListener("visibilitychange", () => { if (document.hidden) window.speechSynthesis?.cancel(); });
