@@ -462,7 +462,14 @@ function renderSettings() {
 
 function chooseEnglishVoice() {
   const voices = window.speechSynthesis?.getVoices?.() || [];
-  return voices.find((voice) => /^en-US/i.test(voice.lang) && /Google|Samantha|Microsoft/i.test(voice.name)) || voices.find((voice) => /^en-US/i.test(voice.lang)) || voices.find((voice) => /^en/i.test(voice.lang));
+  const english = voices.filter((voice) => /^en/i.test(voice.lang || ""));
+  if (!english.length) return null;
+  const preferred = english.filter((voice) =>
+    /^(en-US|en-GB|en-AU|en-CA|en-IE|en-NZ|en-IN|en-ZA)/i.test(voice.lang || "")
+    && !/compact|espeak|novelty/i.test(voice.name || "")
+  );
+  const candidates = preferred.length ? preferred : english;
+  return candidates[Math.floor(Math.random() * candidates.length)] || candidates[0];
 }
 
 function speakText(text, options = {}) {
@@ -624,6 +631,11 @@ function resetSpeakingAttempt() {
   $("#speaking-next").classList.add("hidden");
   $("#speech-support").textContent = speechRecognitionConstructor() ? "START後、GO!が出たら話してください。" : "音声認識非対応です。Listening機能は引き続き利用できます。";
   $("#speech-start").disabled = !speechRecognitionConstructor();
+}
+
+function retrySpeaking() {
+  resetSpeakingAttempt();
+  startSpeakingRecognition();
 }
 
 function nextSpeaking() {
@@ -819,7 +831,7 @@ function bindEvents() {
   $("#model-audio").addEventListener("click", () => currentSpeaking && speakText(currentSpeaking.text));
   $("#speech-start").addEventListener("click", startSpeakingRecognition);
   $("#speech-stop").addEventListener("click", () => stopRecognition(true));
-  $("#speaking-retry").addEventListener("click", resetSpeakingAttempt);
+  $("#speaking-retry").addEventListener("click", retrySpeaking);
   $("#speaking-next").addEventListener("click", nextSpeaking);
   $("#setting-sound").addEventListener("change", async (event) => { state.settings.sound = event.target.checked; await saveState(); });
   $("#setting-vibration").addEventListener("change", async (event) => { state.settings.vibration = event.target.checked; await saveState(); });
