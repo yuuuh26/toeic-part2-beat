@@ -68,6 +68,7 @@
           <span class="sound-waves"><i></i><i></i><i></i><i></i></span>
           <small>TAP TO REPLAY</small>
         </button>
+        <div id="listening-voice-badge" class="voice-origin-badge voice-origin-badge--listening" aria-live="polite">🎙️ 音声地域を確認中...</div>
       </div>
       <div class="answer-zone">
         <button id="uncertain-button" class="uncertain-button" aria-pressed="false"><strong>?</strong><span>自信なし</span></button>
@@ -103,10 +104,11 @@
     <section id="speaking-view" class="view" aria-labelledby="speaking-title">
       <div class="speaking-hud"><span id="speaking-mode">SPEAKING</span><strong id="speaking-combo">COMBO ×0</strong></div>
       <article class="phrase-card">
-        <p class="eyebrow">SAY THIS PHRASE</p>
+        <p id="speaking-label" class="eyebrow">SAY THIS PHRASE</p>
         <h2 id="speaking-title">Ready?</h2>
         <p id="speaking-translation"></p>
         <button id="model-audio" class="model-audio">🔊 MODEL VOICE</button>
+        <div id="speaking-voice-badge" class="voice-origin-badge" aria-live="polite">🎙️ 音声地域を確認中...</div>
       </article>
       <div id="speech-stage" class="speech-stage idle">
         <div class="mic-ring"><span>●</span></div>
@@ -115,7 +117,10 @@
       </div>
       <button id="speech-start" class="speak-button">START</button>
       <button id="speech-stop" class="stop-button hidden">STOP & SCORE</button>
-      <button id="speaking-next" class="next-button hidden">NEXT <span>›</span></button>
+      <div class="speaking-actions">
+        <button id="speaking-retry" class="retry-button hidden">↻ もう一度練習</button>
+        <button id="speaking-next" class="next-button hidden">NEXT <span>›</span></button>
+      </div>
       <p id="speech-support" class="support-note"></p>
     </section>
 
@@ -137,7 +142,7 @@
         <div class="setting-info url-info"><span><strong>App URL</strong><small id="app-url">https://yuuuh26.github.io/toeic-part2-beat/</small></span><button data-copy="app">コピー</button></div>
         <div class="setting-info url-info"><span><strong>Repository</strong><small id="repo-url">https://github.com/yuuuh26/toeic-part2-beat</small></span><button data-copy="repo">コピー</button></div>
       </div>
-      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.5.0</span><small>150 original questions · Local-first PWA</small><p>Made by YUU</p></div>
+      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.6.0</span><small>150 original questions · Local-first PWA</small><p>Made by YUU</p></div>
     </section>
   </main>
 
