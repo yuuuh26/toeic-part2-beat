@@ -2,7 +2,7 @@ import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 import { EXTRA_QUESTIONS } from "./questions-extra.js";
 import { BGM_TRACKS } from "./bgm-tracks.js";
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
 const STORAGE_KEY = "toeic-part2-beat-enhancements-v3";
 const LEGACY_STORAGE_KEYS = ["toeic-part2-beat-enhancements-v2", "toeic-part2-beat-enhancements-v1"];
 const AUDIO_DB_NAME = "toeic-part2-beat-full-bgm";
@@ -44,6 +44,7 @@ bgm.setAttribute("aria-hidden", "true");
 document.body.appendChild(bgm);
 
 let readingActive = false;
+let readingReleaseTimer = 0;
 let voicePool = [];
 let lastVoiceKey = "";
 let lastVoiceLang = "";
@@ -441,6 +442,8 @@ function installSpeechEnhancements() {
         }
       }
 
+      if (readingReleaseTimer) window.clearTimeout(readingReleaseTimer);
+      readingReleaseTimer = 0;
       updateVoiceBadges(utterance.voice, utterance.lang);
       setReadingActive(true);
       const previousEnd = utterance.onend;
@@ -457,8 +460,13 @@ function installSpeechEnhancements() {
     };
 
     synthesis.cancel = () => {
-      setReadingActive(false);
-      return originalCancel();
+      const result = originalCancel();
+      if (readingReleaseTimer) window.clearTimeout(readingReleaseTimer);
+      readingReleaseTimer = window.setTimeout(() => {
+        readingReleaseTimer = 0;
+        setReadingActive(false);
+      }, 80);
+      return result;
     };
   } catch (error) {
     console.warn("Speech enhancement could not patch the browser voice engine", error);
@@ -612,7 +620,15 @@ function handleDirectGesture(event) {
   }
 
   const action = target.dataset.action;
-  const startsListening = action === "quick" || target.hasAttribute("data-filter") || target.id === "replay-question" || target.id === "next-question";
+  if (target.id === "replay-question") {
+    bgmUnlocked = true;
+    previewingBgm = false;
+    setReadingActive(true);
+    startBgm({ force: true, skipLeadIn: true });
+    return;
+  }
+
+  const startsListening = action === "quick" || target.hasAttribute("data-filter") || target.id === "next-question";
   if (startsListening) {
     bgmUnlocked = true;
     previewingBgm = false;
