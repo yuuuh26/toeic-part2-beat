@@ -2,7 +2,7 @@ import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 import { EXTRA_QUESTIONS } from "./questions-extra.js";
 import { BGM_TRACKS } from "./bgm-tracks.js";
 
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.8.0";
 const STORAGE_KEY = "toeic-part2-beat-enhancements-v3";
 const LEGACY_STORAGE_KEYS = ["toeic-part2-beat-enhancements-v2", "toeic-part2-beat-enhancements-v1"];
 const AUDIO_DB_NAME = "toeic-part2-beat-full-bgm";
@@ -14,7 +14,8 @@ const DEFAULTS = Object.freeze({
   bgmVolume: 34,
   readingBgmPercent: 100,
   bgmTrackId: "after-hours-velocity",
-  voiceMode: "rotate"
+  voiceMode: "rotate",
+  voiceCountries: ["en-US", "en-GB", "en-AU", "en-CA"]
 });
 const VOICE_HINTS = ["en-US", "en-GB", "en-AU", "en-CA"];
 
@@ -48,6 +49,7 @@ let readingReleaseTimer = 0;
 let voicePool = [];
 let lastVoiceKey = "";
 let lastVoiceLang = "";
+let currentListeningLocale = "";
 let bgmUnlocked = false;
 let previewingBgm = false;
 let bgmSessionActive = false;
@@ -376,6 +378,13 @@ const VOICE_REGION_META = Object.freeze({
   "en-za": { flag: "🇿🇦", country: "南アフリカ" }
 });
 
+const SELECTABLE_VOICE_COUNTRIES = Object.freeze([
+  { locale: "en-US", flag: "🇺🇸", country: "アメリカ" },
+  { locale: "en-GB", flag: "🇬🇧", country: "イギリス" },
+  { locale: "en-AU", flag: "🇦🇺", country: "オーストラリア" },
+  { locale: "en-CA", flag: "🇨🇦", country: "カナダ" }
+]);
+
 function normalizedVoiceLang(lang = "") {
   return String(lang || "").replace("_", "-").toLowerCase();
 }
@@ -400,30 +409,67 @@ function updateVoiceBadges(voice, fallbackLang = "") {
   });
 }
 
-function selectHighQualityVoice() {
+function enabledVoiceCountries() {
+  const saved = Array.isArray(enhancementSettings.voiceCountries)
+    ? enhancementSettings.voiceCountries
+    : [];
+  const allowed = new Set(SELECTABLE_VOICE_COUNTRIES.map((item) => item.locale));
+  const valid = saved.filter((locale) => allowed.has(locale));
+  return valid.length ? valid : SELECTABLE_VOICE_COUNTRIES.map((item) => item.locale);
+}
+
+function randomEnabledVoiceCountry() {
+  const enabled = enabledVoiceCountries();
+  const alternatives = enabled.length > 1 && currentListeningLocale
+    ? enabled.filter((locale) => normalizedVoiceLang(locale) !== normalizedVoiceLang(currentListeningLocale))
+    : enabled;
+  return alternatives[Math.floor(Math.random() * alternatives.length)] || enabled[0] || "en-US";
+}
+
+function bestVoiceForLocale(locale) {
   const pool = voicePool.length ? voicePool : refreshVoicePool();
   if (!pool.length) return null;
-
-  const groups = new Map();
-  pool.forEach((voice) => {
-    const lang = normalizedVoiceLang(voice.lang);
-    if (!groups.has(lang)) groups.set(lang, []);
-    groups.get(lang).push(voice);
-  });
-
-  const languages = [...groups.keys()];
-  const languageChoices = languages.length > 1 && lastVoiceLang
-    ? languages.filter((lang) => lang !== lastVoiceLang)
-    : languages;
-  const chosenLang = languageChoices[Math.floor(Math.random() * languageChoices.length)] || languages[0];
-  const regionalVoices = groups.get(chosenLang) || pool;
-  const freshVoices = regionalVoices.filter((voice) => `${voice.name}|${voice.lang}` !== lastVoiceKey);
-  const candidates = freshVoices.length ? freshVoices : regionalVoices;
-  const voice = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
-
-  lastVoiceKey = `${voice.name}|${voice.lang}`;
-  lastVoiceLang = normalizedVoiceLang(voice.lang);
+  const normalizedTarget = normalizedVoiceLang(locale);
+  const regional = pool.filter((voice) => normalizedVoiceLang(voice.lang) === normalizedTarget);
+  const candidates = regional.length ? regional : pool;
+  const fresh = candidates.filter((voice) => `${voice.name}|${voice.lang}` !== lastVoiceKey);
+  const options = fresh.length ? fresh : candidates;
+  const voice = options[Math.floor(Math.random() * options.length)] || candidates[0] || null;
+  if (voice) {
+    lastVoiceKey = `${voice.name}|${voice.lang}`;
+    lastVoiceLang = normalizedVoiceLang(voice.lang);
+  }
   return voice;
+}
+
+function selectHighQualityVoice(locale = "") {
+  const desiredLocale = locale || randomEnabledVoiceCountry();
+  return bestVoiceForLocale(desiredLocale);
+}
+
+function updateQuestionCountryControl() {
+  const select = document.querySelector("#question-voice-country");
+  if (!select) return;
+  const locale = currentListeningLocale || randomEnabledVoiceCountry();
+  select.value = locale;
+}
+
+function chooseLocaleForNewQuestion() {
+  currentListeningLocale = randomEnabledVoiceCountry();
+  updateQuestionCountryControl();
+}
+
+function installQuestionCountryControl() {
+  const select = document.querySelector("#question-voice-country");
+  if (!select || select.dataset.bound === "true") return;
+  select.dataset.bound = "true";
+  select.addEventListener("change", () => {
+    currentListeningLocale = select.value || randomEnabledVoiceCountry();
+    const replay = document.querySelector("#replay-question");
+    if (replay && document.querySelector("#game-view.active")) replay.click();
+  });
+  document.addEventListener("toeic-question-changed", chooseLocaleForNewQuestion);
+  chooseLocaleForNewQuestion();
 }
 
 function installSpeechEnhancements() {
@@ -434,11 +480,16 @@ function installSpeechEnhancements() {
 
   try {
     synthesis.speak = (utterance) => {
-      if (enhancementSettings.voiceMode === "rotate" && utterance?.text) {
-        const selectedVoice = selectHighQualityVoice();
+      if (utterance?.text) {
+        const locale = isListeningViewActive()
+          ? (currentListeningLocale || randomEnabledVoiceCountry())
+          : randomEnabledVoiceCountry();
+        const selectedVoice = selectHighQualityVoice(locale);
         if (selectedVoice) {
           utterance.voice = selectedVoice;
-          utterance.lang = selectedVoice.lang || utterance.lang;
+          utterance.lang = selectedVoice.lang || locale || utterance.lang;
+        } else if (locale) {
+          utterance.lang = locale;
         }
       }
 
@@ -506,7 +557,7 @@ function injectSettings() {
     <div class="setting-info"><span><strong>全尺BGM</strong><small id="full-bgm-status">確認中...</small></span><button id="register-full-bgm" class="bgm-import-button" type="button">元MP3を登録</button><input id="full-bgm-files" type="file" accept="audio/*,.mp3,.ogg,.m4a" multiple hidden></div>
     <label><span><strong>BGM音量</strong><small><b id="bgm-volume-value" class="enhancement-value"></b></small></span><input id="setting-bgm-volume" class="enhancement-range" type="range" min="0" max="100" step="1"></label>
     <label><span><strong>問題読み上げ中のBGM</strong><small>通常音量に対する割合 · 初期値100%</small></span><span><b id="reading-bgm-value" class="enhancement-value"></b><input id="setting-reading-bgm" class="enhancement-range" type="range" min="0" max="100" step="10"></span></label>
-    <label class="select-row"><span><strong>問題音声の声</strong><small id="voice-availability">高品質音声を確認中...</small></span><select id="setting-voice-mode"><option value="rotate">高品質音声をランダム切替</option><option value="fixed">現在の音声に固定</option></select></label>
+    <div class="setting-info voice-country-setting"><span><strong>問題音声の国</strong><small id="voice-availability">選択した国から毎問ランダム</small></span><div id="voice-country-options" class="voice-country-options">${SELECTABLE_VOICE_COUNTRIES.map((item) => `<label class="voice-country-chip"><input type="checkbox" value="${item.locale}"><span>${item.flag} ${item.country}</span></label>`).join("")}</div></div>
   `;
   while (wrapper.firstChild) fragment.appendChild(wrapper.firstChild);
   list.prepend(fragment);
@@ -562,9 +613,18 @@ function injectSettings() {
     document.querySelector("#reading-bgm-value").textContent = `${enhancementSettings.readingBgmPercent}%`;
   });
 
-  document.querySelector("#setting-voice-mode").addEventListener("change", (event) => {
-    enhancementSettings.voiceMode = event.target.value;
-    saveEnhancementSettings();
+  document.querySelectorAll("#voice-country-options input[type=\"checkbox\"]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const checked = [...document.querySelectorAll("#voice-country-options input[type=\"checkbox\"]:checked")].map((item) => item.value);
+      if (!checked.length) {
+        input.checked = true;
+        return;
+      }
+      enhancementSettings.voiceCountries = checked;
+      enhancementSettings.voiceMode = "rotate";
+      saveEnhancementSettings();
+      updateVoiceAvailabilityText();
+    });
   });
 
   syncSettingsUi();
@@ -575,12 +635,14 @@ function syncSettingsUi() {
   const track = document.querySelector("#setting-bgm-track");
   const volume = document.querySelector("#setting-bgm-volume");
   const reading = document.querySelector("#setting-reading-bgm");
-  const voiceMode = document.querySelector("#setting-voice-mode");
   if (enabled) enabled.checked = enhancementSettings.bgmEnabled;
   if (track) track.value = selectedTrack()?.id || BGM_TRACKS[0]?.id || "";
   if (volume) volume.value = String(enhancementSettings.bgmVolume);
   if (reading) reading.value = String(enhancementSettings.readingBgmPercent);
-  if (voiceMode) voiceMode.value = enhancementSettings.voiceMode;
+  const enabledCountries = new Set(enabledVoiceCountries());
+  document.querySelectorAll("#voice-country-options input[type=\"checkbox\"]").forEach((input) => {
+    input.checked = enabledCountries.has(input.value);
+  });
   const volumeValue = document.querySelector("#bgm-volume-value");
   const readingValue = document.querySelector("#reading-bgm-value");
   if (volumeValue) volumeValue.textContent = `${enhancementSettings.bgmVolume}%`;
@@ -594,12 +656,12 @@ function syncSettingsUi() {
 function updateVoiceAvailabilityText() {
   const label = document.querySelector("#voice-availability");
   if (!label) return;
-  if (!voicePool.length) {
-    label.textContent = "端末標準の英語音声を使用";
-    return;
-  }
-  const regions = new Set(voicePool.map((voice) => normalizedVoiceLang(voice.lang))).size;
-  label.textContent = `${voicePool.length}種類・${regions}地域の英語音声を利用可能`;
+  const enabled = enabledVoiceCountries();
+  const names = enabled.map((locale) => {
+    const meta = voiceRegionMeta(locale);
+    return `${meta.flag}${meta.country}`;
+  });
+  label.textContent = `${enabled.length}カ国選択 · 毎問ランダム：${names.join(" / ")}`;
 }
 
 function updateAppMetadata() {
@@ -692,6 +754,7 @@ const viewObserver = new MutationObserver(() => {
 viewObserver.observe(document.querySelector("#app") || document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
 
 injectEnhancementStyles();
+installQuestionCountryControl();
 installSpeechEnhancements();
 applySelectedTrack();
 loadRegisteredFullTracks();
