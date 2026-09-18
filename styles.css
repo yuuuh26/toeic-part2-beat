@@ -90,14 +90,14 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
 
 .game-hud, .speaking-hud { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 900; letter-spacing: .07em; color: var(--muted); }
 #combo-label, #speaking-combo { color: var(--gold); text-shadow: 0 0 10px rgba(255,225,77,.5); }
-.fever-frame { margin: 18px 0 24px; min-height: 330px; display: grid; place-items: center; align-content: center; border-radius: 28px; border: 1px solid rgba(0,246,255,.2); background: radial-gradient(circle at 50% 45%, rgba(0,246,255,.12), transparent 42%), rgba(13,10,31,.72); position: relative; transition: box-shadow .3s, border-color .3s; overflow: hidden; }
+.fever-frame { margin: 14px 0 16px; min-height: 250px; display: grid; place-items: center; align-content: center; border-radius: 28px; border: 1px solid rgba(0,246,255,.2); background: radial-gradient(circle at 50% 45%, rgba(0,246,255,.12), transparent 42%), rgba(13,10,31,.72); position: relative; transition: box-shadow .3s, border-color .3s; overflow: hidden; }
 .fever-frame::before, .fever-frame::after { content: ""; position: absolute; inset: -30%; border-radius: 45%; opacity: 0; pointer-events: none; }
 .fever .fever-frame { border-color: var(--pink); box-shadow: 0 0 24px rgba(255,43,214,.32), inset 0 0 35px rgba(0,246,255,.12); animation: fever-border 1.4s infinite alternate; }
 .fever .fever-frame::before { opacity: .35; border: 3px solid var(--cyan); animation: spin 7s linear infinite; }
 .fever .fever-frame::after { opacity: .24; border: 3px dashed var(--pink); animation: spin 10s linear reverse infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fever-border { to { box-shadow: 0 0 38px rgba(0,246,255,.4), inset 0 0 45px rgba(255,43,214,.14); } }
-.sound-orb { width: 172px; height: 172px; border-radius: 50%; border: 2px solid var(--cyan); background: radial-gradient(circle, rgba(0,246,255,.2), rgba(10,7,28,.95) 70%); box-shadow: 0 0 38px rgba(0,246,255,.25), inset 0 0 32px rgba(0,246,255,.12); cursor: pointer; position: relative; z-index: 1; }
+.sound-orb { width: 158px; height: 158px; border-radius: 50%; border: 2px solid var(--cyan); background: radial-gradient(circle, rgba(0,246,255,.2), rgba(10,7,28,.95) 70%); box-shadow: 0 0 38px rgba(0,246,255,.25), inset 0 0 32px rgba(0,246,255,.12); cursor: pointer; position: relative; z-index: 1; touch-action: manipulation; }
 .sound-orb:active { transform: scale(.96); }
 .sound-orb small { position: absolute; left: 0; right: 0; bottom: 32px; color: var(--muted); font-size: 8px; letter-spacing: .1em; }
 .sound-waves { height: 58px; display: flex; gap: 7px; justify-content: center; align-items: center; }
@@ -106,16 +106,14 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
 .sound-waves i:nth-child(3) { height: 55px; animation-delay: -.55s; }
 .sound-waves i:nth-child(4) { height: 30px; animation-delay: -.12s; }
 @keyframes wave { to { transform: scaleY(.35); opacity: .6; } }
-.listening-status { margin: 22px 0 0; font-size: 11px; font-weight: 900; letter-spacing: .18em; color: var(--cyan-soft); }
 .answer-zone { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .uncertain-button { min-height: 52px; width: 100%; border-radius: 16px; border: 1px solid rgba(255,225,77,.35); background: rgba(28,23,28,.9); color: var(--gold); display: flex; align-items: center; justify-content: center; gap: 9px; cursor: pointer; }
 .uncertain-button strong { font-size: 26px; line-height: .8; }
 .uncertain-button span { font-size: 10px; color: var(--muted); margin-top: 0; font-weight: 900; letter-spacing: .08em; }
 .uncertain-button.active { background: rgba(255,225,77,.2); border-color: var(--gold); box-shadow: 0 0 20px rgba(255,225,77,.3); }
-.choice-grid { display: grid; grid-template-columns: 1fr; gap: 11px; }
-.choice-button { min-height: 88px; width: 100%; padding: 13px 16px; border-radius: 19px; border: 1px solid rgba(0,246,255,.32); background: linear-gradient(150deg, #18123a, #0d0a21); display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 14px; text-align: left; cursor: pointer; box-shadow: inset 0 0 22px rgba(0,246,255,.03); touch-action: manipulation; }
-.choice-letter { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: rgba(0,246,255,.11); color: var(--cyan); font-size: 23px; font-weight: 1000; font-style: italic; }
-.choice-text { min-width: 0; font-size: 17px; line-height: 1.28; font-weight: 900; font-style: normal; letter-spacing: .005em; overflow-wrap: anywhere; }
+.choice-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.choice-button { min-height: 108px; width: 100%; padding: 10px 16px; border-radius: 22px; border: 1px solid rgba(0,246,255,.32); background: linear-gradient(150deg, #18123a, #0d0a21); display: grid; place-items: center; cursor: pointer; box-shadow: inset 0 0 22px rgba(0,246,255,.03); touch-action: manipulation; }
+.choice-letter { width: 70px; height: 70px; border-radius: 22px; display: grid; place-items: center; background: rgba(0,246,255,.11); color: var(--cyan); font-size: 36px; font-weight: 1000; font-style: italic; }
 .choice-button:active { transform: scale(.975); background: rgba(0,246,255,.15); }
 .choice-button:disabled { opacity: .55; }
 .choice-button.correct { color: var(--lime); border-color: var(--lime); background: rgba(183,255,42,.14); box-shadow: 0 0 24px rgba(183,255,42,.35); }
@@ -217,8 +215,11 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
 @keyframes countdown { 0% { opacity: 0; transform: scale(2); } 45% { opacity: 1; transform: scale(.85); } 100% { opacity: 0; transform: scale(1.15); } }
 
 @media (max-height: 720px) {
-  .fever-frame { min-height: 260px; margin: 8px 0 14px; }
-  .sound-orb { width: 145px; height: 145px; }
+  .fever-frame { min-height: 190px; margin: 7px 0 10px; }
+  .sound-orb { width: 126px; height: 126px; }
+  .sound-orb small { bottom: 22px; }
+  .choice-button { min-height: 94px; }
+  .choice-letter { width: 62px; height: 62px; font-size: 32px; }
   .phrase-card { min-height: 175px; margin-top: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
