@@ -1,13 +1,15 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 import { EXTRA_QUESTIONS } from "./questions-extra.js";
-import { AFTER_HOURS_VELOCITY_BGM } from "./bgm-after-hours.js";
+import { BGM_TRACKS } from "./bgm-tracks.js";
 
-const APP_VERSION = "1.3.0";
-const STORAGE_KEY = "toeic-part2-beat-enhancements-v1";
+const APP_VERSION = "1.4.0";
+const STORAGE_KEY = "toeic-part2-beat-enhancements-v2";
+const LEGACY_STORAGE_KEY = "toeic-part2-beat-enhancements-v1";
 const DEFAULTS = Object.freeze({
   bgmEnabled: true,
   bgmVolume: 34,
   readingBgmPercent: 100,
+  bgmTrackId: "after-hours-velocity",
   voiceMode: "rotate"
 });
 const VOICE_HINTS = ["en-US", "en-GB", "en-AU", "en-CA"];
@@ -29,23 +31,25 @@ const voiceHintByListeningText = new Map(
   ])
 );
 
-const bgm = new Audio(AFTER_HOURS_VELOCITY_BGM);
+const bgm = new Audio();
 bgm.id = "game-bgm";
 bgm.loop = true;
 bgm.preload = "auto";
+bgm.playsInline = true;
 bgm.setAttribute("aria-hidden", "true");
 document.body.appendChild(bgm);
 
 let readingActive = false;
 let voicePool = [];
-let lastActiveView = "home-view";
-let volumeAnimationFrame = 0;
+let bgmUnlocked = false;
+let previewingBgm = false;
 
 function loadEnhancementSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY) || "null");
     return { ...DEFAULTS, ...(saved && typeof saved === "object" ? saved : {}) };
-  } catch {
+  } catch (error) {
+    console.warn("Enhancement settings could not be loaded", error);
     return { ...DEFAULTS };
   }
 }
@@ -54,66 +58,104 @@ function saveEnhancementSettings() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(enhancementSettings));
   } catch (error) {
-    console.debug("Enhancement settings could not be saved", error);
+    console.warn("Enhancement settings could not be saved", error);
   }
 }
 
 function listeningTextFor(question) {
-  return [
-    question.questionText,
-    ...question.choices.map((choice) => `${choice.key}. ${choice.text}`)
-  ].join(" ");
+  if (!question) return "";
+  return [question.questionText, ...question.choices.map((choice) => `${choice.key}. ${choice.text}`)].join(" ");
 }
 
-function clamp(value, minimum, maximum) {
-  return Math.min(maximum, Math.max(minimum, Number(value) || 0));
+function selectedTrack() {
+  return BGM_TRACKS.find((track) => track.id === enhancementSettings.bgmTrackId) || BGM_TRACKS[0];
+}
+
+function applySelectedTrack({ reset = false } = {}) {
+  const track = selectedTrack();
+  if (!track) return;
+  if (bgm.dataset.trackId !== track.id) {
+    bgm.pause();
+    bgm.src = track.src;
+    bgm.dataset.trackId = track.id;
+    bgm.load();
+    reset = true;
+  }
+  if (reset) {
+    try { bgm.currentTime = 0; } catch (error) { console.debug("BGM seek unavailable", error); }
+  }
+  updateBgmStatus();
 }
 
 function currentBgmTargetVolume() {
-  const base = clamp(enhancementSettings.bgmVolume, 0, 100) / 100;
+  const base = Math.max(0, Math.min(100, Number(enhancementSettings.bgmVolume) || 0)) / 100;
   const readingRatio = readingActive
-    ? clamp(enhancementSettings.readingBgmPercent, 0, 100) / 100
+    ? Math.max(0, Math.min(100, Number(enhancementSettings.readingBgmPercent) || 0)) / 100
     : 1;
-  return base * readingRatio;
+  return Math.max(0, Math.min(1, base * readingRatio));
 }
 
-function animateBgmVolume(target, duration = 160) {
-  cancelAnimationFrame(volumeAnimationFrame);
-  const startVolume = bgm.volume;
-  const safeTarget = clamp(target, 0, 1);
-  const startedAt = performance.now();
-  const step = (now) => {
-    const progress = duration <= 0 ? 1 : Math.min(1, (now - startedAt) / duration);
-    bgm.volume = startVolume + (safeTarget - startVolume) * progress;
-    if (progress < 1) volumeAnimationFrame = requestAnimationFrame(step);
-  };
-  volumeAnimationFrame = requestAnimationFrame(step);
+function syncBgmVolume() {
+  bgm.volume = currentBgmTargetVolume();
+}
+
+function isListeningViewActive() {
+  return Boolean(document.querySelector("#game-view.active, #review-view.active"));
+}
+
+function startBgm({ force = false, restart = false } = {}) {
+  if (!enhancementSettings.bgmEnabled) return;
+  if (!force && !isListeningViewActive()) return;
+  applySelectedTrack({ reset: restart });
+  syncBgmVolume();
+  const playAttempt = bgm.play();
+  if (playAttempt?.then) {
+    playAttempt
+      .then(() => {
+        bgmUnlocked = true;
+        updateBgmStatus("再生中");
+        updatePreviewButton();
+      })
+      .catch((error) => {
+        updateBgmStatus("再生できませんでした。もう一度プレイを押してください");
+        console.debug("BGM play was blocked", error);
+      });
+  }
+}
+
+function pauseBgm({ reset = false } = {}) {
+  bgm.pause();
+  previewingBgm = false;
+  if (reset) {
+    try { bgm.currentTime = 0; } catch (error) { console.debug("BGM reset unavailable", error); }
+  }
+  updateBgmStatus();
+  updatePreviewButton();
 }
 
 function setReadingActive(active) {
   readingActive = Boolean(active);
-  animateBgmVolume(currentBgmTargetVolume());
+  syncBgmVolume();
 }
 
-function activeViewId() {
-  return document.querySelector(".view.active")?.id || "";
-}
-
-function isListeningSessionView(viewId = activeViewId()) {
-  return viewId === "game-view" || viewId === "review-view";
-}
-
-function startBgm() {
-  if (!enhancementSettings.bgmEnabled) return;
-  animateBgmVolume(currentBgmTargetVolume(), 80);
-  const playAttempt = bgm.play();
-  if (playAttempt && typeof playAttempt.catch === "function") {
-    playAttempt.catch((error) => console.debug("BGM playback is waiting for a user gesture", error));
+function updateBgmStatus(message = "") {
+  const status = document.querySelector("#bgm-status");
+  if (!status) return;
+  const track = selectedTrack();
+  if (message) {
+    status.textContent = message;
+  } else if (!enhancementSettings.bgmEnabled) {
+    status.textContent = "オフ";
+  } else if (!bgm.paused) {
+    status.textContent = `${track?.title || "BGM"} を再生中`;
+  } else {
+    status.textContent = `${track?.title || "BGM"} · プレイ開始時に再生`;
   }
 }
 
-function pauseBgm() {
-  bgm.pause();
+function updatePreviewButton() {
+  const button = document.querySelector("#preview-bgm");
+  if (button) button.textContent = !bgm.paused && previewingBgm ? "■ 停止" : "▶ 試聴";
 }
 
 function cancelNarration() {
@@ -162,9 +204,7 @@ function selectHighQualityVoice(text) {
   const pool = voicePool.length ? voicePool : refreshVoicePool();
   if (!pool.length) return null;
   const hint = voiceHintByListeningText.get(text);
-  const regional = hint
-    ? pool.filter((voice) => `${voice.lang || ""}`.toLowerCase() === hint.toLowerCase())
-    : [];
+  const regional = hint ? pool.filter((voice) => `${voice.lang || ""}`.toLowerCase() === hint.toLowerCase()) : [];
   const candidates = regional.length ? regional : pool;
   return candidates[stableHash(text) % candidates.length] || pool[0];
 }
@@ -175,197 +215,224 @@ function installSpeechEnhancements() {
   const originalSpeak = synthesis.speak.bind(synthesis);
   const originalCancel = synthesis.cancel.bind(synthesis);
 
-  synthesis.speak = (utterance) => {
-    if (enhancementSettings.voiceMode === "rotate" && utterance?.text) {
-      const selectedVoice = selectHighQualityVoice(utterance.text);
-      if (selectedVoice) {
-        utterance.voice = selectedVoice;
-        utterance.lang = selectedVoice.lang || utterance.lang;
+  try {
+    synthesis.speak = (utterance) => {
+      if (enhancementSettings.voiceMode === "rotate" && utterance?.text) {
+        const selectedVoice = selectHighQualityVoice(utterance.text);
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          utterance.lang = selectedVoice.lang || utterance.lang;
+        }
       }
-    }
 
-    setReadingActive(true);
-    const previousEnd = utterance.onend;
-    const previousError = utterance.onerror;
-    utterance.onend = (event) => {
-      setReadingActive(false);
-      if (typeof previousEnd === "function") previousEnd.call(utterance, event);
+      setReadingActive(true);
+      const previousEnd = utterance.onend;
+      const previousError = utterance.onerror;
+      utterance.onend = (event) => {
+        setReadingActive(false);
+        if (typeof previousEnd === "function") previousEnd.call(utterance, event);
+      };
+      utterance.onerror = (event) => {
+        setReadingActive(false);
+        if (typeof previousError === "function") previousError.call(utterance, event);
+      };
+      return originalSpeak(utterance);
     };
-    utterance.onerror = (event) => {
-      setReadingActive(false);
-      if (typeof previousError === "function") previousError.call(utterance, event);
-    };
-    return originalSpeak(utterance);
-  };
 
-  synthesis.cancel = () => {
-    setReadingActive(false);
-    return originalCancel();
-  };
+    synthesis.cancel = () => {
+      setReadingActive(false);
+      return originalCancel();
+    };
+  } catch (error) {
+    console.warn("Speech enhancement could not patch the browser voice engine", error);
+  }
 
   refreshVoicePool();
   synthesis.addEventListener?.("voiceschanged", refreshVoicePool);
-  window.addEventListener("voiceschanged", refreshVoicePool);
-}
-
-function settingRow(innerHtml, className = "") {
-  const wrapper = document.createElement("label");
-  wrapper.className = `enhancement-setting ${className}`.trim();
-  wrapper.innerHTML = innerHtml;
-  return wrapper;
 }
 
 function injectEnhancementStyles() {
+  if (document.querySelector("#enhancement-styles")) return;
   const style = document.createElement("style");
+  style.id = "enhancement-styles";
   style.textContent = `
-    .enhancement-setting input[type="range"] { width: 132px; accent-color: var(--cyan); }
-    .enhancement-range-control { display: grid; grid-template-columns: minmax(92px, 1fr) 42px; gap: 8px; align-items: center; }
-    .enhancement-range-control output { color: var(--cyan); font-size: 11px; font-weight: 900; text-align: right; }
-    .enhancement-setting select { max-width: 176px; }
-    .enhancement-setting small.voice-count { color: var(--cyan-soft); }
+    .enhancement-range { width: 132px; accent-color: var(--cyan); }
+    .bgm-track-actions { display: flex; align-items: center; gap: 8px; }
+    .bgm-track-actions select { min-width: 150px; max-width: 180px; }
+    .bgm-track-actions button { min-width: 70px; min-height: 38px; border: 1px solid var(--cyan); border-radius: 12px; background: rgba(0,246,255,.1); color: var(--cyan); font-weight: 900; cursor: pointer; }
+    .enhancement-value { color: var(--cyan); font-weight: 900; }
   `;
   document.head.appendChild(style);
 }
 
-function injectSettingsControls() {
-  const list = document.querySelector("#settings-view .settings-list");
-  if (!list || document.querySelector("#setting-bgm")) return;
-  const insertionPoint = document.querySelector("#setting-effects")?.closest("label")?.nextSibling || list.firstChild;
+function injectSettings() {
+  const list = document.querySelector(".settings-list");
+  if (!list || document.querySelector("#setting-bgm-enabled")) {
+    syncSettingsUi();
+    return;
+  }
 
-  const bgmToggle = settingRow(`
-    <span><strong>BGM</strong><small>問題モード中に再生</small></span>
-    <input id="setting-bgm" type="checkbox">
-  `);
-  const bgmVolume = settingRow(`
-    <span><strong>BGM音量</strong><small>通常時の音量</small></span>
-    <span class="enhancement-range-control"><input id="setting-bgm-volume" type="range" min="0" max="100" step="1"><output id="setting-bgm-volume-value"></output></span>
-  `);
-  const readingVolume = settingRow(`
-    <span><strong>読み上げ中のBGM</strong><small>通常音量に対する割合・初期値100%</small></span>
-    <span class="enhancement-range-control"><input id="setting-reading-bgm" type="range" min="0" max="100" step="5"><output id="setting-reading-bgm-value"></output></span>
-  `);
-  const voiceMode = settingRow(`
-    <span><strong>問題音声のバリエーション</strong><small id="voice-availability" class="voice-count">音声を確認中...</small></span>
-    <select id="setting-voice-mode">
-      <option value="rotate">高品質音声を自動切替</option>
-      <option value="fixed">現在の音声に固定</option>
-    </select>
-  `, "select-row");
+  const fragment = document.createDocumentFragment();
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = `
+    <label><span><strong>BGM</strong><small id="bgm-status">プレイ開始時に再生</small></span><input id="setting-bgm-enabled" type="checkbox"></label>
+    <div class="setting-info"><span><strong>BGM選択</strong><small>気分に合わせて変更</small></span><div class="bgm-track-actions"><select id="setting-bgm-track">${BGM_TRACKS.map((track) => `<option value="${track.id}">${track.title}</option>`).join("")}</select><button id="preview-bgm" type="button">▶ 試聴</button></div></div>
+    <label><span><strong>BGM音量</strong><small><b id="bgm-volume-value" class="enhancement-value"></b></small></span><input id="setting-bgm-volume" class="enhancement-range" type="range" min="0" max="100" step="1"></label>
+    <label><span><strong>問題読み上げ中のBGM</strong><small>通常音量に対する割合 · 初期値100%</small></span><span><b id="reading-bgm-value" class="enhancement-value"></b><input id="setting-reading-bgm" class="enhancement-range" type="range" min="0" max="100" step="10"></span></label>
+    <label class="select-row"><span><strong>問題音声の声</strong><small id="voice-availability">高品質音声を確認中...</small></span><select id="setting-voice-mode"><option value="rotate">高品質音声を自動切替</option><option value="fixed">現在の音声に固定</option></select></label>
+  `;
+  while (wrapper.firstChild) fragment.appendChild(wrapper.firstChild);
+  list.prepend(fragment);
 
-  [voiceMode, readingVolume, bgmVolume, bgmToggle].forEach((row) => list.insertBefore(row, insertionPoint));
-
-  const bgmToggleInput = document.querySelector("#setting-bgm");
-  const bgmVolumeInput = document.querySelector("#setting-bgm-volume");
-  const readingVolumeInput = document.querySelector("#setting-reading-bgm");
-  const voiceModeInput = document.querySelector("#setting-voice-mode");
-
-  bgmToggleInput.checked = enhancementSettings.bgmEnabled;
-  bgmVolumeInput.value = String(enhancementSettings.bgmVolume);
-  readingVolumeInput.value = String(enhancementSettings.readingBgmPercent);
-  voiceModeInput.value = enhancementSettings.voiceMode;
-  updateSettingsOutputs();
-
-  bgmToggleInput.addEventListener("change", () => {
-    enhancementSettings.bgmEnabled = bgmToggleInput.checked;
+  document.querySelector("#setting-bgm-enabled").addEventListener("change", (event) => {
+    enhancementSettings.bgmEnabled = event.target.checked;
     saveEnhancementSettings();
-    if (enhancementSettings.bgmEnabled && isListeningSessionView()) startBgm();
-    else pauseBgm();
+    if (event.target.checked) startBgm({ force: isListeningViewActive() });
+    else pauseBgm({ reset: true });
+    updateBgmStatus();
   });
-  bgmVolumeInput.addEventListener("input", () => {
-    enhancementSettings.bgmVolume = clamp(bgmVolumeInput.value, 0, 100);
+
+  document.querySelector("#setting-bgm-track").addEventListener("change", (event) => {
+    enhancementSettings.bgmTrackId = event.target.value;
     saveEnhancementSettings();
-    updateSettingsOutputs();
-    animateBgmVolume(currentBgmTargetVolume(), 60);
+    applySelectedTrack({ reset: true });
+    if (isListeningViewActive() || previewingBgm) startBgm({ force: true, restart: true });
+    updateBgmStatus();
   });
-  readingVolumeInput.addEventListener("input", () => {
-    enhancementSettings.readingBgmPercent = clamp(readingVolumeInput.value, 0, 100);
+
+  document.querySelector("#preview-bgm").addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    bgmUnlocked = true;
+    if (!bgm.paused && previewingBgm) {
+      pauseBgm({ reset: true });
+      return;
+    }
+    previewingBgm = true;
+    startBgm({ force: true, restart: true });
+    updatePreviewButton();
+  });
+
+  document.querySelector("#setting-bgm-volume").addEventListener("input", (event) => {
+    enhancementSettings.bgmVolume = Number(event.target.value);
     saveEnhancementSettings();
-    updateSettingsOutputs();
-    animateBgmVolume(currentBgmTargetVolume(), 60);
+    syncBgmVolume();
+    document.querySelector("#bgm-volume-value").textContent = `${enhancementSettings.bgmVolume}%`;
   });
-  voiceModeInput.addEventListener("change", () => {
-    enhancementSettings.voiceMode = voiceModeInput.value;
+
+  document.querySelector("#setting-reading-bgm").addEventListener("input", (event) => {
+    enhancementSettings.readingBgmPercent = Number(event.target.value);
     saveEnhancementSettings();
-    updateVoiceAvailabilityText();
+    syncBgmVolume();
+    document.querySelector("#reading-bgm-value").textContent = `${enhancementSettings.readingBgmPercent}%`;
   });
+
+  document.querySelector("#setting-voice-mode").addEventListener("change", (event) => {
+    enhancementSettings.voiceMode = event.target.value;
+    saveEnhancementSettings();
+  });
+
+  syncSettingsUi();
 }
 
-function updateSettingsOutputs() {
-  const bgmOutput = document.querySelector("#setting-bgm-volume-value");
-  const readingOutput = document.querySelector("#setting-reading-bgm-value");
-  if (bgmOutput) bgmOutput.value = `${Math.round(enhancementSettings.bgmVolume)}%`;
-  if (readingOutput) readingOutput.value = `${Math.round(enhancementSettings.readingBgmPercent)}%`;
+function syncSettingsUi() {
+  const enabled = document.querySelector("#setting-bgm-enabled");
+  const track = document.querySelector("#setting-bgm-track");
+  const volume = document.querySelector("#setting-bgm-volume");
+  const reading = document.querySelector("#setting-reading-bgm");
+  const voiceMode = document.querySelector("#setting-voice-mode");
+  if (enabled) enabled.checked = enhancementSettings.bgmEnabled;
+  if (track) track.value = selectedTrack()?.id || BGM_TRACKS[0]?.id || "";
+  if (volume) volume.value = String(enhancementSettings.bgmVolume);
+  if (reading) reading.value = String(enhancementSettings.readingBgmPercent);
+  if (voiceMode) voiceMode.value = enhancementSettings.voiceMode;
+  const volumeValue = document.querySelector("#bgm-volume-value");
+  const readingValue = document.querySelector("#reading-bgm-value");
+  if (volumeValue) volumeValue.textContent = `${enhancementSettings.bgmVolume}%`;
+  if (readingValue) readingValue.textContent = `${enhancementSettings.readingBgmPercent}%`;
+  updateBgmStatus();
+  updatePreviewButton();
+  updateVoiceAvailabilityText();
 }
 
 function updateVoiceAvailabilityText() {
   const label = document.querySelector("#voice-availability");
-  if (!label) return;
-  if (enhancementSettings.voiceMode === "fixed") {
-    label.textContent = "端末の現在の音声を使用";
-    return;
-  }
-  label.textContent = voicePool.length >= 2
-    ? `利用可能な高品質英語音声：${voicePool.length}種類`
-    : "別音声がない場合は現在の音声を維持";
+  if (label) label.textContent = voicePool.length ? `${voicePool.length}種類の英語音声を利用可能` : "端末標準の英語音声を使用";
 }
 
-function synchronizeDisplayedMetadata() {
+function updateAppMetadata() {
   const version = document.querySelector("#version-label");
-  const count = document.querySelector("#settings-view .about-card small");
   if (version) version.textContent = `v${APP_VERSION}`;
-  if (count) count.textContent = `${QUESTIONS.length} original questions · Local-first PWA`;
+  const about = document.querySelector(".about-card small");
+  if (about) about.textContent = `${QUESTIONS.length} original questions · 4 selectable BGM tracks · Local-first PWA`;
 }
 
-function handleViewChange() {
-  const viewId = activeViewId();
-  if (!viewId || viewId === lastActiveView) {
-    synchronizeDisplayedMetadata();
+function handleDirectGesture(event) {
+  const target = event.target.closest?.("#back-button, [data-action], [data-filter], #replay-question, #next-question");
+  if (!target) return;
+
+  if (target.id === "back-button") {
+    cancelNarration();
+    pauseBgm();
     return;
   }
-  lastActiveView = viewId;
 
-  if (isListeningSessionView(viewId)) {
-    startBgm();
-  } else {
-    pauseBgm();
+  const action = target.dataset.action;
+  const startsListening = action === "quick" || target.hasAttribute("data-filter") || target.id === "replay-question" || target.id === "next-question";
+  if (startsListening) {
+    bgmUnlocked = true;
+    previewingBgm = false;
+    startBgm({ force: true });
+    return;
   }
 
-  if (viewId === "home-view" || viewId === "settings-view" || viewId === "stats-view" || viewId === "weak-view") {
-    cancelNarration();
-  }
-  synchronizeDisplayedMetadata();
-}
-
-function installNavigationGuards() {
-  document.addEventListener("click", (event) => {
-    const target = event.target.closest?.("#back-button, [data-action='quick'], [data-filter], #replay-question");
-    if (!target) return;
-    if (target.id === "back-button") {
-      cancelNarration();
-      pauseBgm();
-      return;
-    }
-    if (target.matches("[data-action='quick'], [data-filter], #replay-question")) startBgm();
-  }, true);
-
-  const observer = new MutationObserver(handleViewChange);
-  document.querySelectorAll(".view").forEach((view) => observer.observe(view, { attributes: true, attributeFilter: ["class"] }));
-
-  window.addEventListener("pagehide", () => {
+  if (action) {
     cancelNarration();
     pauseBgm();
-  });
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) {
-      cancelNarration();
-      pauseBgm();
-    }
-  });
+  }
 }
+
+document.addEventListener("pointerdown", handleDirectGesture, true);
+document.addEventListener("click", (event) => {
+  if (window.PointerEvent) return;
+  handleDirectGesture(event);
+}, true);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    cancelNarration();
+    pauseBgm();
+  }
+});
+window.addEventListener("pagehide", () => {
+  cancelNarration();
+  pauseBgm();
+});
+
+bgm.addEventListener("play", () => {
+  updateBgmStatus("再生中");
+  updatePreviewButton();
+});
+bgm.addEventListener("pause", () => {
+  updateBgmStatus();
+  updatePreviewButton();
+});
+bgm.addEventListener("error", () => {
+  updateBgmStatus("音源を読み込めませんでした");
+});
+
+const viewObserver = new MutationObserver(() => {
+  updateAppMetadata();
+  injectSettings();
+  if (isListeningViewActive()) {
+    if (bgmUnlocked) startBgm();
+  } else if (!document.querySelector("#settings-view.active") || !previewingBgm) {
+    pauseBgm();
+  }
+});
+viewObserver.observe(document.querySelector("#app") || document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
 
 injectEnhancementStyles();
-injectSettingsControls();
 installSpeechEnhancements();
-installNavigationGuards();
-synchronizeDisplayedMetadata();
-animateBgmVolume(currentBgmTargetVolume(), 0);
+applySelectedTrack();
+injectSettings();
+updateAppMetadata();
