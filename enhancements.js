@@ -488,6 +488,7 @@ function installSpeechEnhancements() {
           utterance.voice = selectedVoice;
           utterance.lang = selectedVoice.lang || locale || utterance.lang;
         } else if (locale) {
+          utterance.voice = null;
           utterance.lang = locale;
         }
       }
