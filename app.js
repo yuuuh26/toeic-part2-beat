@@ -1,7 +1,7 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 
 const APP = Object.freeze({
-  version: "1.2.0",
+  version: "1.5.0",
   dailyGoal: 10,
   streakMinimum: 5,
   appUrl: "https://yuuuh26.github.io/toeic-part2-beat/",
