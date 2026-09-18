@@ -1,10 +1,20 @@
-const CACHE_NAME = "toeic-part2-beat-v1.2.0";
+const CACHE_NAME = "toeic-part2-beat-v1.3.0";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./enhancements.js",
   "./questions.js",
+  "./questions-extra.js",
+  "./questions-extra-1.js",
+  "./questions-extra-2.js",
+  "./questions-extra-3.js",
+  "./questions-extra-4.js",
+  "./questions-extra-5.js",
+  "./bgm-after-hours.js",
+  "./bgm-small-1.js",
+  "./bgm-small-2.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
