@@ -90,7 +90,7 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
 
 .game-hud, .speaking-hud { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 900; letter-spacing: .07em; color: var(--muted); }
 #combo-label, #speaking-combo { color: var(--gold); text-shadow: 0 0 10px rgba(255,225,77,.5); }
-.fever-frame { margin: 14px 0 16px; min-height: 250px; display: grid; place-items: center; align-content: center; border-radius: 28px; border: 1px solid rgba(0,246,255,.2); background: radial-gradient(circle at 50% 45%, rgba(0,246,255,.12), transparent 42%), rgba(13,10,31,.72); position: relative; transition: box-shadow .3s, border-color .3s; overflow: hidden; }
+.fever-frame { margin: 14px 0 16px; min-height: 250px; padding: 0 0 54px; box-sizing: border-box; display: grid; place-items: center; align-content: center; border-radius: 28px; border: 1px solid rgba(0,246,255,.2); background: radial-gradient(circle at 50% 45%, rgba(0,246,255,.12), transparent 42%), rgba(13,10,31,.72); position: relative; transition: box-shadow .3s, border-color .3s; overflow: hidden; }
 .fever-frame::before, .fever-frame::after { content: ""; position: absolute; inset: -30%; border-radius: 45%; opacity: 0; pointer-events: none; }
 .fever .fever-frame { border-color: var(--pink); box-shadow: 0 0 24px rgba(255,43,214,.32), inset 0 0 35px rgba(0,246,255,.12); animation: fever-border 1.4s infinite alternate; }
 .fever .fever-frame::before { opacity: .35; border: 3px solid var(--cyan); animation: spin 7s linear infinite; }
@@ -236,37 +236,43 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
   box-shadow: 0 0 14px rgba(0,246,255,.08);
 }
 .voice-origin-badge--listening {
-  position: absolute;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
+  position: static;
+  transform: none;
   margin: 0;
   white-space: nowrap;
 }
 .question-voice-tools {
   position: absolute;
   left: 50%;
-  bottom: 12px;
+  bottom: 10px;
   transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
   z-index: 2;
-  width: min(92%, 280px);
+  width: min(calc(100% - 24px), 360px);
 }
 .question-voice-tools .voice-origin-badge--listening {
-  position: static;
-  left: auto;
-  bottom: auto;
-  transform: none;
-  margin: 0;
+  min-width: 0;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .question-voice-selector {
+  min-height: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 8px;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0 8px;
   border: 1px solid rgba(139,92,255,.38);
   border-radius: 12px;
   background: rgba(8,5,22,.88);
@@ -274,15 +280,17 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
   font-size: 8px;
   font-weight: 1000;
   letter-spacing: .12em;
+  box-sizing: border-box;
 }
 .question-voice-selector select {
-  max-width: 180px;
+  max-width: 150px;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--cyan-soft);
   font-size: 10px;
   font-weight: 900;
+  text-align: right;
 }
 .voice-country-setting {
   align-items: flex-start !important;
@@ -350,7 +358,7 @@ h1 span { color: var(--pink); text-shadow: 0 0 24px rgba(255,43,214,.75); }
 .retry-button:active { transform: scale(.98); }
 
 @media (max-height: 720px) {
-  .fever-frame { min-height: 190px; margin: 7px 0 10px; }
+  .fever-frame { min-height: 190px; margin: 7px 0 10px; padding-bottom: 48px; }
   .sound-orb { width: 126px; height: 126px; }
   .sound-orb small { bottom: 22px; }
   .choice-button { min-height: 94px; }
