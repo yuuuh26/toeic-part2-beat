@@ -1,0 +1,18 @@
+{
+  "id": "/toeic-part2-beat/",
+  "name": "TOEIC Part 2 BEAT",
+  "short_name": "Part 2 BEAT",
+  "description": "TOEIC Listening Part 2をネオンアーケード感覚で反復する個人用学習アプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080516",
+  "theme_color": "#080516",
+  "categories": ["education", "games"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

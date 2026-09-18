@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#080516">
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="TOEIC Listening Part 2をネオンアーケード感覚で反復する個人用PWA">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>TOEIC Part 2 BEAT</title>
+</head>
+<body>
+  <canvas id="fx-canvas" aria-hidden="true"></canvas>
+  <div id="flash" aria-hidden="true"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="reward-layer" class="reward-layer" aria-live="assertive"></div>
+
+  <main id="app" class="app-shell">
+    <header class="topbar">
+      <button id="back-button" class="icon-button hidden" aria-label="ホームに戻る">‹</button>
+      <div class="brand-mini" aria-label="TOEIC Part 2 BEAT"><span>2</span><b>BEAT</b></div>
+      <div id="top-status" class="top-status"></div>
+    </header>
+
+    <section id="home-view" class="view active" aria-labelledby="home-title">
+      <div class="hero-card">
+        <div>
+          <p class="eyebrow">TOEIC LISTENING</p>
+          <h1 id="home-title">PART <span>2</span> BEAT</h1>
+          <p class="tagline">LISTEN. REACT. LEVEL UP.</p>
+        </div>
+        <div class="level-orb"><small>LV.</small><strong id="home-level">1</strong></div>
+      </div>
+
+      <div class="xp-panel">
+        <div class="xp-row"><span id="xp-label">0 / 100 XP</span><span id="xp-percent">0%</span></div>
+        <div class="xp-track"><i id="xp-fill"></i></div>
+      </div>
+
+      <div class="dashboard-grid">
+        <article class="dash-card streak-card"><span>🔥</span><strong id="streak-value">0 DAYS</strong><small>STREAK</small></article>
+        <article class="dash-card daily-card"><span id="today-count">0 / 10</span><div class="mini-track"><i id="daily-fill"></i></div><small id="daily-caption">あと10問！</small></article>
+      </div>
+
+      <nav class="main-menu" aria-label="ゲームメニュー">
+        <button class="menu-button primary" data-action="quick"><span class="menu-icon">▶</span><span><strong>QUICK PLAY</strong><small>テンポよく通常学習</small></span></button>
+        <button class="menu-button magenta" data-action="weak"><span class="menu-icon">⚡</span><span><strong>WEAK POINT</strong><small>苦手を集中攻略</small></span><b id="weak-badge" class="badge">0</b></button>
+        <button class="menu-button cyan" data-action="speaking"><span class="menu-icon">◉</span><span><strong>SPEAKING</strong><small>正答フレーズを発話</small></span></button>
+        <button class="menu-button violet" data-action="weak-speaking"><span class="menu-icon">◆</span><span><strong>WEAK SPEAKING</strong><small>苦手を声で定着</small></span></button>
+        <div class="secondary-menu">
+          <button data-action="stats">STATS</button>
+          <button data-action="settings">SETTINGS</button>
+        </div>
+      </nav>
+    </section>
+
+    <section id="game-view" class="view" aria-label="Listeningゲーム">
+      <div class="game-hud">
+        <span id="question-number">Q.01</span>
+        <span id="mode-label">QUICK PLAY</span>
+        <span id="combo-label">COMBO 0</span>
+      </div>
+      <div id="fever-frame" class="fever-frame">
+        <button id="replay-question" class="sound-orb" aria-label="問題をもう一度再生">
+          <span class="sound-waves"><i></i><i></i><i></i><i></i></span>
+          <small>TAP TO REPLAY</small>
+        </button>
+        <p id="listening-status" class="listening-status">LISTENING...</p>
+      </div>
+      <div class="answer-zone">
+        <button id="uncertain-button" class="uncertain-button" aria-pressed="false"><strong>?</strong><span>自信なし</span></button>
+        <div class="choice-grid">
+          <button class="choice-button" data-choice="A"><span>A</span></button>
+          <button class="choice-button" data-choice="B"><span>B</span></button>
+          <button class="choice-button" data-choice="C"><span>C</span></button>
+        </div>
+      </div>
+    </section>
+
+    <section id="review-view" class="view" aria-label="復習">
+      <div class="review-head"><span class="wrong-mark">MISS</span><strong id="review-id"></strong></div>
+      <article class="review-card question-review">
+        <div class="review-line"><button id="review-question-audio" class="mini-audio" aria-label="問題を再生">▶</button><div><strong id="review-question-en"></strong><p id="review-question-ja"></p></div></div>
+      </article>
+      <div id="review-choices" class="review-choices"></div>
+      <article class="explanation-card"><small>WHY?</small><p id="review-explanation"></p></article>
+      <button id="next-question" class="next-button">NEXT <span>›</span></button>
+    </section>
+
+    <section id="weak-view" class="view" aria-labelledby="weak-title">
+      <div class="section-heading"><p class="eyebrow">FOCUS MODE</p><h2 id="weak-title">WEAK POINT</h2><p>いま弱い問題だけを狙い撃ち。</p></div>
+      <div class="filter-list">
+        <button data-filter="missed"><strong>MISSED</strong><span>間違えた問題</span><b id="count-missed">0</b></button>
+        <button data-filter="uncertain"><strong>UNCERTAIN</strong><span>？を使った問題</span><b id="count-uncertain">0</b></button>
+        <button data-filter="all"><strong>ALL WEAK</strong><span>両方をまとめて</span><b id="count-all">0</b></button>
+        <button data-filter="accuracy"><strong>LOW ACCURACY</strong><span>正答率75%未満</span><b id="count-accuracy">0</b></button>
+        <button data-filter="auto" class="recommended"><strong>AUTO</strong><span>Weak Scoreから自動選択</span><b id="count-auto">0</b></button>
+      </div>
+    </section>
+
+    <section id="speaking-view" class="view" aria-labelledby="speaking-title">
+      <div class="speaking-hud"><span id="speaking-mode">SPEAKING</span><strong id="speaking-combo">COMBO ×0</strong></div>
+      <article class="phrase-card">
+        <p class="eyebrow">SAY THIS PHRASE</p>
+        <h2 id="speaking-title">Ready?</h2>
+        <p id="speaking-translation"></p>
+        <button id="model-audio" class="model-audio">🔊 MODEL VOICE</button>
+      </article>
+      <div id="speech-stage" class="speech-stage idle">
+        <div class="mic-ring"><span>●</span></div>
+        <strong id="speech-status">TAP START</strong>
+        <p id="speech-transcript">認識結果がここに表示されます</p>
+      </div>
+      <button id="speech-start" class="speak-button">START</button>
+      <button id="speech-stop" class="stop-button hidden">STOP & SCORE</button>
+      <button id="speaking-next" class="next-button hidden">NEXT <span>›</span></button>
+      <p id="speech-support" class="support-note"></p>
+    </section>
+
+    <section id="stats-view" class="view" aria-labelledby="stats-title">
+      <div class="section-heading"><p class="eyebrow">YOUR RECORDS</p><h2 id="stats-title">STATS</h2></div>
+      <div id="stats-summary" class="stats-summary"></div>
+      <h3 class="subheading">QUESTION DATA</h3>
+      <div id="question-stats" class="question-stats"></div>
+    </section>
+
+    <section id="settings-view" class="view" aria-labelledby="settings-title">
+      <div class="section-heading"><p class="eyebrow">SYSTEM</p><h2 id="settings-title">SETTINGS</h2></div>
+      <div class="settings-list">
+        <label><span><strong>効果音</strong><small>正解・報酬サウンド</small></span><input id="setting-sound" type="checkbox" checked></label>
+        <label><span><strong>振動</strong><small>対応端末のみ</small></span><input id="setting-vibration" type="checkbox" checked></label>
+        <label class="select-row"><span><strong>問題音声速度</strong></span><select id="setting-rate"><option value="0.85">0.85×</option><option value="0.95">0.95×</option><option value="1" selected>1.0×</option><option value="1.1">1.1×</option></select></label>
+        <label class="select-row"><span><strong>エフェクト強度</strong><small>初期値はMAX</small></span><select id="setting-effects"><option value="max">MAX</option><option value="normal">NORMAL</option><option value="reduced">REDUCED</option></select></label>
+        <div class="setting-info"><span><strong>永続ストレージ</strong><small id="persistence-status">確認中...</small></span><button id="request-persistence">申請</button></div>
+        <div class="setting-info url-info"><span><strong>App URL</strong><small id="app-url">https://yuuuh26.github.io/toeic-part2-beat/</small></span><button data-copy="app">コピー</button></div>
+        <div class="setting-info url-info"><span><strong>Repository</strong><small id="repo-url">https://github.com/yuuuh26/toeic-part2-beat</small></span><button data-copy="repo">コピー</button></div>
+      </div>
+      <div class="about-card"><strong>TOEIC Part 2 BEAT</strong><span id="version-label">v1.0.0</span><small>50 original questions · Local-first PWA</small><p>Made by YUU</p></div>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
