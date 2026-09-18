@@ -1,7 +1,7 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 
 const APP = Object.freeze({
-  version: "1.5.0",
+  version: "1.6.0",
   dailyGoal: 10,
   streakMinimum: 5,
   appUrl: "https://yuuuh26.github.io/toeic-part2-beat/",
@@ -60,6 +60,7 @@ let listeningCombo = 0;
 let speakingCombo = 0;
 let speakingQueue = [];
 let currentSpeaking = null;
+let currentSpeakingWeakMode = false;
 let recognition = null;
 let recognitionActive = false;
 let shouldScoreSpeech = false;
@@ -573,35 +574,67 @@ function launchParticles(count, special) {
   requestAnimationFrame(draw);
 }
 
+function buildSpeakingQueue(weakOnly = false) {
+  if (!weakOnly) {
+    return shuffled(QUESTIONS).map((question) => {
+      const choice = question.choices.find((item) => item.key === question.correctChoice);
+      return { question, text: choice.text, ja: choice.ja, label: "SAY THIS PHRASE" };
+    });
+  }
+
+  const missed = getWeakQuestions("missed");
+  const pool = missed.length ? missed : getWeakQuestions("auto");
+  if (!pool.length) return [];
+
+  return shuffled(pool).flatMap((question) => [
+    { question, text: question.questionText, ja: question.questionJa, label: "WEAK · QUESTION" },
+    ...question.choices.map((choice) => ({
+      question,
+      text: choice.text,
+      ja: choice.ja,
+      label: `WEAK · CHOICE ${choice.key}`
+    }))
+  ]);
+}
+
 function setupSpeaking(weakOnly = false) {
-  const pool = weakOnly ? getWeakQuestions("auto") : QUESTIONS;
-  if (!pool.length) {
-    showToast("弱点問題がないため通常Speakingを開始します");
+  speakingQueue = buildSpeakingQueue(weakOnly);
+  if (!speakingQueue.length) {
+    showToast("間違えた問題がないため通常Speakingを開始します");
     return setupSpeaking(false);
   }
-  speakingQueue = shuffled(pool);
+  currentSpeakingWeakMode = weakOnly;
   speakingCombo = 0;
   $("#speaking-mode").textContent = weakOnly ? "WEAK SPEAKING" : "SPEAKING";
   showView("speaking");
   nextSpeaking();
 }
 
-function nextSpeaking() {
-  if (!speakingQueue.length) speakingQueue = shuffled(QUESTIONS);
-  const question = speakingQueue.shift();
-  const choice = question.choices.find((item) => item.key === question.correctChoice);
-  currentSpeaking = { question, text: choice.text, ja: choice.ja };
-  $("#speaking-title").textContent = choice.text;
-  $("#speaking-translation").textContent = choice.ja;
-  $("#speaking-combo").textContent = `COMBO ×${speakingCombo}`;
+function resetSpeakingAttempt() {
+  speechFinalSegments = [];
+  speechFinalKeys = new Set();
+  speechInterim = "";
+  shouldScoreSpeech = false;
   $("#speech-stage").className = "speech-stage idle";
   $("#speech-status").textContent = "TAP START";
   $("#speech-transcript").textContent = "認識結果がここに表示されます";
   $("#speech-start").classList.remove("hidden");
   $("#speech-stop").classList.add("hidden");
+  $("#speaking-retry").classList.add("hidden");
   $("#speaking-next").classList.add("hidden");
   $("#speech-support").textContent = speechRecognitionConstructor() ? "START後、GO!が出たら話してください。" : "音声認識非対応です。Listening機能は引き続き利用できます。";
   $("#speech-start").disabled = !speechRecognitionConstructor();
+}
+
+function nextSpeaking() {
+  if (!speakingQueue.length) speakingQueue = buildSpeakingQueue(currentSpeakingWeakMode);
+  if (!speakingQueue.length) return showView("home");
+  currentSpeaking = speakingQueue.shift();
+  $("#speaking-label").textContent = currentSpeaking.label || "SAY THIS PHRASE";
+  $("#speaking-title").textContent = currentSpeaking.text;
+  $("#speaking-translation").textContent = currentSpeaking.ja || "";
+  $("#speaking-combo").textContent = `COMBO ×${speakingCombo}`;
+  resetSpeakingAttempt();
 }
 
 function speechRecognitionConstructor() { return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
@@ -722,6 +755,7 @@ async function scoreSpeech() {
   $("#speech-stage").className = "speech-stage idle";
   $("#speech-status").textContent = rank === "retry" ? "KEEP GOING" : `${rank.toUpperCase()} · ${Math.round(score * 100)}%`;
   $("#speech-transcript").textContent = spoken || "音声を認識できませんでした";
+  $("#speaking-retry").classList.remove("hidden");
   $("#speaking-next").classList.remove("hidden");
   const record = questionRecord(currentSpeaking.question.id);
   record.speakingCount += 1;
@@ -785,6 +819,7 @@ function bindEvents() {
   $("#model-audio").addEventListener("click", () => currentSpeaking && speakText(currentSpeaking.text));
   $("#speech-start").addEventListener("click", startSpeakingRecognition);
   $("#speech-stop").addEventListener("click", () => stopRecognition(true));
+  $("#speaking-retry").addEventListener("click", resetSpeakingAttempt);
   $("#speaking-next").addEventListener("click", nextSpeaking);
   $("#setting-sound").addEventListener("change", async (event) => { state.settings.sound = event.target.checked; await saveState(); });
   $("#setting-vibration").addEventListener("change", async (event) => { state.settings.vibration = event.target.checked; await saveState(); });
