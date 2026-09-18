@@ -1,7 +1,7 @@
 import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 
 const APP = Object.freeze({
-  version: "1.1.0",
+  version: "1.2.0",
   dailyGoal: 10,
   streakMinimum: 5,
   appUrl: "https://yuuuh26.github.io/toeic-part2-beat/",
@@ -298,15 +298,25 @@ function nextQuestion() {
     if (!button) return;
     button.disabled = false;
     button.classList.remove("correct", "wrong");
-    button.innerHTML = `<span class="choice-letter">${choice.key}</span><span class="choice-text">${escapeHtml(choice.text)}</span>`;
-    button.setAttribute("aria-label", `${choice.key}. ${choice.text}`);
+    button.innerHTML = `<span class="choice-letter">${choice.key}</span>`;
+    button.setAttribute("aria-label", `選択肢${choice.key}`);
   });
-  $("#listening-status").textContent = "LISTENING...";
-  const listeningText = [
-    currentQuestion.questionText,
-    ...currentQuestion.choices.map((choice) => `${choice.key}. ${choice.text}`)
+  setTimeout(() => {
+    if (!answerLocked) playListeningQuestion();
+  }, 180);
+}
+
+function listeningTextFor(question) {
+  if (!question) return "";
+  return [
+    question.questionText,
+    ...question.choices.map((choice) => `${choice.key}. ${choice.text}`)
   ].join(" ");
-  setTimeout(() => speakText(listeningText, { onEnd: () => { if (!answerLocked) $("#listening-status").textContent = "CHOOSE A / B / C"; } }), 180);
+}
+
+function playListeningQuestion() {
+  if (!currentQuestion) return;
+  speakText(listeningTextFor(currentQuestion));
 }
 
 function updateComboHud() {
@@ -770,8 +780,8 @@ function bindEvents() {
   $$('[data-filter]').forEach((button) => button.addEventListener("click", () => startGame("weak", button.dataset.filter)));
   $("#uncertain-button").addEventListener("click", toggleUncertain);
   $$(".choice-button").forEach((button) => button.addEventListener("click", () => submitAnswer(button.dataset.choice)));
-  $("#replay-question").addEventListener("click", () => currentQuestion && speakText(currentQuestion.questionText));
-  $("#review-question-audio").addEventListener("click", () => currentQuestion && speakText(currentQuestion.questionText));
+  $("#replay-question").addEventListener("click", playListeningQuestion);
+  $("#review-question-audio").addEventListener("click", playListeningQuestion);
   $("#next-question").addEventListener("click", () => { showView("game"); nextQuestion(); });
   $("#model-audio").addEventListener("click", () => currentSpeaking && speakText(currentSpeaking.text));
   $("#speech-start").addEventListener("click", startSpeakingRecognition);
