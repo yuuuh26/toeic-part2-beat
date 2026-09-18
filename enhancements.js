@@ -2,7 +2,7 @@ import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 import { EXTRA_QUESTIONS } from "./questions-extra.js";
 import { BGM_TRACKS } from "./bgm-tracks.js";
 
-const APP_VERSION = "1.8.0";
+const APP_VERSION = "1.8.1";
 const STORAGE_KEY = "toeic-part2-beat-enhancements-v3";
 const LEGACY_STORAGE_KEYS = ["toeic-part2-beat-enhancements-v2", "toeic-part2-beat-enhancements-v1"];
 const AUDIO_DB_NAME = "toeic-part2-beat-full-bgm";
