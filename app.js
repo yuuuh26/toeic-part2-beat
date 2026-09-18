@@ -612,6 +612,10 @@ function renderSettings() {
   const totalQuickSeconds = quickTimeLimitSeconds();
   $("#setting-quick-minutes").value = String(Math.floor(totalQuickSeconds / 60));
   $("#setting-quick-seconds").value = String(totalQuickSeconds % 60);
+  const quickTimeMode = state.settings.quickEndMode === "time";
+  $("#setting-quick-questions").disabled = quickTimeMode;
+  $("#setting-quick-minutes").disabled = !quickTimeMode;
+  $("#setting-quick-seconds").disabled = !quickTimeMode;
   $("#app-url").textContent = APP.appUrl;
   $("#repo-url").textContent = APP.repoUrl;
   $("#version-label").textContent = `v${APP.version}`;
