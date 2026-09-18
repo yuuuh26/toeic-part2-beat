@@ -2,9 +2,13 @@ import { QUESTIONS, QUESTION_MAP } from "./questions.js";
 import { EXTRA_QUESTIONS } from "./questions-extra.js";
 import { BGM_TRACKS } from "./bgm-tracks.js";
 
-const APP_VERSION = "1.4.0";
-const STORAGE_KEY = "toeic-part2-beat-enhancements-v2";
-const LEGACY_STORAGE_KEY = "toeic-part2-beat-enhancements-v1";
+const APP_VERSION = "1.5.0";
+const STORAGE_KEY = "toeic-part2-beat-enhancements-v3";
+const LEGACY_STORAGE_KEYS = ["toeic-part2-beat-enhancements-v2", "toeic-part2-beat-enhancements-v1"];
+const AUDIO_DB_NAME = "toeic-part2-beat-full-bgm";
+const AUDIO_STORE_NAME = "tracks";
+const BGM_LEAD_IN_MS = 1500;
+const BGM_FADE_MS = 900;
 const DEFAULTS = Object.freeze({
   bgmEnabled: true,
   bgmVolume: 34,
@@ -33,7 +37,7 @@ const voiceHintByListeningText = new Map(
 
 const bgm = new Audio();
 bgm.id = "game-bgm";
-bgm.loop = true;
+bgm.loop = false;
 bgm.preload = "auto";
 bgm.playsInline = true;
 bgm.setAttribute("aria-hidden", "true");
@@ -43,15 +47,110 @@ let readingActive = false;
 let voicePool = [];
 let bgmUnlocked = false;
 let previewingBgm = false;
+let bgmSessionActive = false;
+let bgmLeadInTimer = 0;
+let bgmFadeFrame = 0;
+let bgmFading = false;
+const fullTrackSources = new Map();
 
 function loadEnhancementSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY) || "null");
+    const raw = localStorage.getItem(STORAGE_KEY)
+      || LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean)
+      || "null";
+    const saved = JSON.parse(raw);
     return { ...DEFAULTS, ...(saved && typeof saved === "object" ? saved : {}) };
   } catch (error) {
     console.warn("Enhancement settings could not be loaded", error);
     return { ...DEFAULTS };
   }
+}
+
+function openAudioDb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(AUDIO_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(AUDIO_STORE_NAME)) db.createObjectStore(AUDIO_STORE_NAME, { keyPath: "id" });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function loadRegisteredFullTracks() {
+  if (!("indexedDB" in window)) return;
+  try {
+    const db = await openAudioDb();
+    const records = await new Promise((resolve, reject) => {
+      const tx = db.transaction(AUDIO_STORE_NAME, "readonly");
+      const request = tx.objectStore(AUDIO_STORE_NAME).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+    for (const record of records) {
+      if (!record?.id || !record?.blob) continue;
+      const previous = fullTrackSources.get(record.id);
+      if (previous?.startsWith?.("blob:")) URL.revokeObjectURL(previous);
+      fullTrackSources.set(record.id, URL.createObjectURL(record.blob));
+    }
+    db.close();
+    applySelectedTrack();
+    updateFullBgmStatus();
+  } catch (error) {
+    console.warn("Full BGM could not be restored", error);
+  }
+}
+
+function matchTrackId(filename) {
+  const normalized = String(filename || "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return BGM_TRACKS.find((track) => track.id.split("-").every((token) => normalized.includes(token)))?.id || null;
+}
+
+async function registerFullTracks(files) {
+  if (!files?.length || !("indexedDB" in window)) return;
+  const matched = Array.from(files)
+    .map((file) => ({ file, id: matchTrackId(file.name) }))
+    .filter((item) => item.id);
+  if (!matched.length) {
+    updateBgmStatus("対応するBGM名を確認できませんでした");
+    return;
+  }
+  try {
+    const db = await openAudioDb();
+    for (const { file, id } of matched) {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(AUDIO_STORE_NAME, "readwrite");
+        tx.objectStore(AUDIO_STORE_NAME).put({ id, blob: file, filename: file.name, savedAt: Date.now() });
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      const previous = fullTrackSources.get(id);
+      if (previous?.startsWith?.("blob:")) URL.revokeObjectURL(previous);
+      fullTrackSources.set(id, URL.createObjectURL(file));
+    }
+    db.close();
+    applySelectedTrack({ reset: true });
+    updateFullBgmStatus();
+    const status = document.querySelector("#full-bgm-status");
+    if (status) status.textContent = matched.length === 4 ? "4/4曲 全尺登録済み" : `${matched.length}曲を登録しました · 合計${fullTrackCount()}/4曲`;
+  } catch (error) {
+    console.warn("Full BGM registration failed", error);
+    updateBgmStatus("全尺BGMの保存に失敗しました");
+  }
+}
+
+function fullTrackCount() {
+  return BGM_TRACKS.filter((track) => fullTrackSources.has(track.id) || track.fullSrc).length;
+}
+
+function updateFullBgmStatus() {
+  const status = document.querySelector("#full-bgm-status");
+  if (!status) return;
+  const count = fullTrackCount();
+  status.textContent = count >= BGM_TRACKS.length
+    ? "4/4曲 全尺登録済み"
+    : `${count}/4曲 全尺利用可能 · 元MP3は一度だけ登録`;
 }
 
 function saveEnhancementSettings() {
@@ -74,10 +173,15 @@ function selectedTrack() {
 function applySelectedTrack({ reset = false } = {}) {
   const track = selectedTrack();
   if (!track) return;
-  if (bgm.dataset.trackId !== track.id) {
+  const fullSource = fullTrackSources.get(track.id) || track.fullSrc || "";
+  const source = fullSource || track.src;
+  const sourceKey = fullSource ? `full:${track.id}` : `fallback:${track.id}`;
+  if (bgm.dataset.sourceKey !== sourceKey) {
     bgm.pause();
-    bgm.src = track.src;
+    bgm.src = source;
     bgm.dataset.trackId = track.id;
+    bgm.dataset.sourceKey = sourceKey;
+    bgm.dataset.fullTrack = fullSource ? "true" : "false";
     bgm.load();
     reset = true;
   }
@@ -95,7 +199,36 @@ function currentBgmTargetVolume() {
   return Math.max(0, Math.min(1, base * readingRatio));
 }
 
+function clearBgmTransitions() {
+  if (bgmLeadInTimer) window.clearTimeout(bgmLeadInTimer);
+  bgmLeadInTimer = 0;
+  if (bgmFadeFrame) cancelAnimationFrame(bgmFadeFrame);
+  bgmFadeFrame = 0;
+  bgmFading = false;
+}
+
+function fadeBgmToTarget(duration = BGM_FADE_MS) {
+  clearBgmTransitions();
+  bgmFading = true;
+  const startedAt = performance.now();
+  const from = bgm.volume;
+  const step = (now) => {
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const target = currentBgmTargetVolume();
+    bgm.volume = Math.max(0, Math.min(1, from + (target - from) * eased));
+    if (progress < 1 && !bgm.paused) bgmFadeFrame = requestAnimationFrame(step);
+    else {
+      bgmFadeFrame = 0;
+      bgmFading = false;
+      if (!bgm.paused) bgm.volume = currentBgmTargetVolume();
+    }
+  };
+  bgmFadeFrame = requestAnimationFrame(step);
+}
+
 function syncBgmVolume() {
+  if (bgmLeadInTimer || bgmFading) return;
   bgm.volume = currentBgmTargetVolume();
 }
 
@@ -103,17 +236,35 @@ function isListeningViewActive() {
   return Boolean(document.querySelector("#game-view.active, #review-view.active"));
 }
 
-function startBgm({ force = false, restart = false } = {}) {
+function startBgm({ force = false, restart = false, skipLeadIn = false } = {}) {
   if (!enhancementSettings.bgmEnabled) return;
   if (!force && !isListeningViewActive()) return;
   applySelectedTrack({ reset: restart });
-  syncBgmVolume();
+
+  const firstStart = !bgmSessionActive || restart;
+  if (firstStart && !skipLeadIn) {
+    clearBgmTransitions();
+    bgm.volume = 0;
+  } else {
+    syncBgmVolume();
+  }
+
   const playAttempt = bgm.play();
   if (playAttempt?.then) {
     playAttempt
       .then(() => {
         bgmUnlocked = true;
-        updateBgmStatus("再生中");
+        bgmSessionActive = true;
+        if (firstStart && !skipLeadIn) {
+          bgmLeadInTimer = window.setTimeout(() => {
+            bgmLeadInTimer = 0;
+            fadeBgmToTarget();
+          }, BGM_LEAD_IN_MS);
+          updateBgmStatus("1.5秒後にBGM開始");
+        } else {
+          syncBgmVolume();
+          updateBgmStatus("再生中");
+        }
         updatePreviewButton();
       })
       .catch((error) => {
@@ -123,9 +274,11 @@ function startBgm({ force = false, restart = false } = {}) {
   }
 }
 
-function pauseBgm({ reset = false } = {}) {
+function pauseBgm({ reset = false, endSession = true } = {}) {
+  clearBgmTransitions();
   bgm.pause();
   previewingBgm = false;
+  if (endSession) bgmSessionActive = false;
   if (reset) {
     try { bgm.currentTime = 0; } catch (error) { console.debug("BGM reset unavailable", error); }
   }
@@ -147,9 +300,11 @@ function updateBgmStatus(message = "") {
   } else if (!enhancementSettings.bgmEnabled) {
     status.textContent = "オフ";
   } else if (!bgm.paused) {
-    status.textContent = `${track?.title || "BGM"} を再生中`;
+    const mode = bgm.dataset.fullTrack === "true" ? "全尺" : "短縮フォールバック";
+    status.textContent = `${track?.title || "BGM"} · ${mode}を再生中`;
   } else {
-    status.textContent = `${track?.title || "BGM"} · プレイ開始時に再生`;
+    const mode = bgm.dataset.fullTrack === "true" ? "全尺" : "全尺未登録";
+    status.textContent = `${track?.title || "BGM"} · ${mode}`;
   }
 }
 
@@ -259,7 +414,8 @@ function injectEnhancementStyles() {
     .enhancement-range { width: 132px; accent-color: var(--cyan); }
     .bgm-track-actions { display: flex; align-items: center; gap: 8px; }
     .bgm-track-actions select { min-width: 150px; max-width: 180px; }
-    .bgm-track-actions button { min-width: 70px; min-height: 38px; border: 1px solid var(--cyan); border-radius: 12px; background: rgba(0,246,255,.1); color: var(--cyan); font-weight: 900; cursor: pointer; }
+    .bgm-track-actions button, .bgm-import-button { min-width: 70px; min-height: 38px; border: 1px solid var(--cyan); border-radius: 12px; background: rgba(0,246,255,.1); color: var(--cyan); font-weight: 900; cursor: pointer; }
+    .bgm-import-button { padding: 8px 12px; }
     .enhancement-value { color: var(--cyan); font-weight: 900; }
   `;
   document.head.appendChild(style);
@@ -277,6 +433,7 @@ function injectSettings() {
   wrapper.innerHTML = `
     <label><span><strong>BGM</strong><small id="bgm-status">プレイ開始時に再生</small></span><input id="setting-bgm-enabled" type="checkbox"></label>
     <div class="setting-info"><span><strong>BGM選択</strong><small>気分に合わせて変更</small></span><div class="bgm-track-actions"><select id="setting-bgm-track">${BGM_TRACKS.map((track) => `<option value="${track.id}">${track.title}</option>`).join("")}</select><button id="preview-bgm" type="button">▶ 試聴</button></div></div>
+    <div class="setting-info"><span><strong>全尺BGM</strong><small id="full-bgm-status">確認中...</small></span><button id="register-full-bgm" class="bgm-import-button" type="button">元MP3を登録</button><input id="full-bgm-files" type="file" accept="audio/*,.mp3,.ogg,.m4a" multiple hidden></div>
     <label><span><strong>BGM音量</strong><small><b id="bgm-volume-value" class="enhancement-value"></b></small></span><input id="setting-bgm-volume" class="enhancement-range" type="range" min="0" max="100" step="1"></label>
     <label><span><strong>問題読み上げ中のBGM</strong><small>通常音量に対する割合 · 初期値100%</small></span><span><b id="reading-bgm-value" class="enhancement-value"></b><input id="setting-reading-bgm" class="enhancement-range" type="range" min="0" max="100" step="10"></span></label>
     <label class="select-row"><span><strong>問題音声の声</strong><small id="voice-availability">高品質音声を確認中...</small></span><select id="setting-voice-mode"><option value="rotate">高品質音声を自動切替</option><option value="fixed">現在の音声に固定</option></select></label>
@@ -308,8 +465,17 @@ function injectSettings() {
       return;
     }
     previewingBgm = true;
-    startBgm({ force: true, restart: true });
+    startBgm({ force: true, restart: true, skipLeadIn: true });
     updatePreviewButton();
+  });
+
+  document.querySelector("#register-full-bgm").addEventListener("click", () => {
+    document.querySelector("#full-bgm-files")?.click();
+  });
+
+  document.querySelector("#full-bgm-files").addEventListener("change", async (event) => {
+    await registerFullTracks(event.target.files);
+    event.target.value = "";
   });
 
   document.querySelector("#setting-bgm-volume").addEventListener("input", (event) => {
@@ -351,6 +517,7 @@ function syncSettingsUi() {
   if (readingValue) readingValue.textContent = `${enhancementSettings.readingBgmPercent}%`;
   updateBgmStatus();
   updatePreviewButton();
+  updateFullBgmStatus();
   updateVoiceAvailabilityText();
 }
 
@@ -372,7 +539,7 @@ function handleDirectGesture(event) {
 
   if (target.id === "back-button") {
     cancelNarration();
-    pauseBgm();
+    pauseBgm({ reset: true, endSession: true });
     return;
   }
 
@@ -387,7 +554,7 @@ function handleDirectGesture(event) {
 
   if (action) {
     cancelNarration();
-    pauseBgm();
+    pauseBgm({ reset: true, endSession: true });
   }
 }
 
@@ -400,12 +567,12 @@ document.addEventListener("click", (event) => {
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     cancelNarration();
-    pauseBgm();
+    pauseBgm({ reset: true, endSession: true });
   }
 });
 window.addEventListener("pagehide", () => {
   cancelNarration();
-  pauseBgm();
+  pauseBgm({ reset: true, endSession: true });
 });
 
 bgm.addEventListener("play", () => {
@@ -419,6 +586,15 @@ bgm.addEventListener("pause", () => {
 bgm.addEventListener("error", () => {
   updateBgmStatus("音源を読み込めませんでした");
 });
+bgm.addEventListener("ended", () => {
+  if (bgm.dataset.fullTrack === "true" && enhancementSettings.bgmEnabled && (isListeningViewActive() || previewingBgm)) {
+    try { bgm.currentTime = 0; } catch {}
+    startBgm({ force: true, skipLeadIn: true });
+  } else if (bgm.dataset.fullTrack !== "true") {
+    bgmSessionActive = false;
+    updateBgmStatus("短縮版の連続ループを停止 · 元MP3を登録してください");
+  }
+});
 
 const viewObserver = new MutationObserver(() => {
   updateAppMetadata();
@@ -426,7 +602,7 @@ const viewObserver = new MutationObserver(() => {
   if (isListeningViewActive()) {
     if (bgmUnlocked) startBgm();
   } else if (!document.querySelector("#settings-view.active") || !previewingBgm) {
-    pauseBgm();
+    pauseBgm({ reset: true, endSession: true });
   }
 });
 viewObserver.observe(document.querySelector("#app") || document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
@@ -434,5 +610,6 @@ viewObserver.observe(document.querySelector("#app") || document.body, { subtree:
 injectEnhancementStyles();
 installSpeechEnhancements();
 applySelectedTrack();
+loadRegisteredFullTracks();
 injectSettings();
 updateAppMetadata();
