@@ -5,7 +5,7 @@ import { VICTORY_LOOP } from "./bgm-track-victory-loop.js";
 
 export const BGM_TRACKS = Object.freeze([
   { id: "after-hours-velocity", title: "After Hours Velocity", src: AFTER_HOURS_VELOCITY },
-  { id: "ready-set-goal", title: "Ready Set Goal", src: READY_SET_GOAL },
+  { id: "ready-set-goal", title: "Ready Set Goal", src: READY_SET_GOAL, fullSrc: "https://raw.githubusercontent.com/yuuuh26/english-speaking-beat/main/assets/bgm/ready_set_goal.mp3" },
   { id: "step-into-focus", title: "Step Into Focus", src: STEP_INTO_FOCUS },
   { id: "victory-loop", title: "Victory Loop", src: VICTORY_LOOP }
 ]);
